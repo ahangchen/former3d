@@ -138,3 +138,23 @@ def visualize(o3d_geoms):
     for i in range(len(o3d_geoms)):
         callbacks[ord(str(i + 1))] = functools.partial(toggle_geom, geom_ind=i)
     o3d.visualization.draw_geometries_with_key_callbacks(o3d_geoms, callbacks)
+
+
+def occupancy_to_pointcloud(occ_file, outfile=None):  
+    """Convert occupancy file to point cloud for visualization"""  
+    data = np.load(occ_file)  
+    indices = data['indices']  
+    occupancy = data['occupancy']  
+      
+    # Filter to only occupied voxels  
+    occupied_indices = indices[occupancy > 0]  
+      
+    # Create point cloud with uniform color (e.g., red)  
+    points = np.zeros((len(occupied_indices), 6))  
+    points[:, :3] = occupied_indices  
+    points[:, 3:] = [255, 0, 0]  # Red color  
+      
+    if outfile:  
+        pcwrite(outfile, points)  
+      
+    return points

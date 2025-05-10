@@ -309,6 +309,18 @@ def inference(model, info_file, outfile, n_imgs, cropsize, voxel_size=0.04):
         voxel_logits.indices[:, 1:].cpu().numpy(),
         1.05 * torch.tanh(voxel_logits.features).squeeze(-1).cpu().numpy(),
     )
+    # Save occupancy  
+    occupancy = (voxel_logits.features.squeeze(-1) > 0).cpu().numpy()  
+    occ_vol = utils.to_vol(  
+        voxel_logits.indices[:, 1:].cpu().numpy(),  
+        occupancy  
+    )  
+    occ_outfile = outfile.replace('.ply', '_occupancy.npz')  
+    np.savez_compressed(occ_outfile,   
+                        indices=voxel_logits.indices[:, 1:].cpu().numpy(),   
+                        occupancy=occupancy,   
+                        occupancy_volume=occ_vol)  
+    print(f"Saved occupancy to {occ_outfile}")
     mesh = utils.to_mesh(
         -tsdf_vol,
         voxel_size=voxel_size,

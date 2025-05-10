@@ -110,6 +110,11 @@ class LightningModel(pl.LightningModule):
                 write_mesh(outfile, voxel_outputs["fine"], self.config["voxel_size"])
             except Exception as e:
                 print('!!! Exception', e)
+            try:  
+                occ_file = write_mesh_and_occupancy(outfile, voxel_outputs["fine"], self.config["voxel_size"])  
+                print(f"Saved occupancy to {occ_file}")  
+            except Exception as e:  
+                print('!!! Exception', e)
 
     def training_epoch_end(self, outputs):
         self.epoch_end(self.epoch_train_logs, "train")
@@ -169,3 +174,27 @@ def write_mesh(outfile, logits_04, voxel_size=0.04):
 
     mesh = utils.to_mesh(tsdf_vol, voxel_size=voxel_size, level=0, mask=~np.isnan(tsdf_vol))
     o3d.io.write_triangle_mesh(outfile, mesh)
+
+def write_mesh_and_occupancy(outfile, logits_04, voxel_size=0.04):  
+    batch_mask = logits_04.indices[:, 0] == 0  
+    inds = logits_04.indices[batch_mask, 1:].cpu().numpy()  
+    tsdf_logits = logits_04.features[batch_mask, 0].cpu().numpy()  
+      
+    # Calculate occupancy (binary)  
+    occupancy = (tsdf_logits > 0).astype(np.int8)  
+      
+    # Save occupancy to file  
+    occ_outfile = outfile.replace('.ply', '_occupancy.npz')  
+    occ_vol = utils.to_vol(inds, occupancy)  
+    np.savez_compressed(occ_outfile,   
+                        indices=inds,   
+                        occupancy=occupancy,   
+                        occupancy_volume=occ_vol)  
+      
+    # Original mesh saving code  
+    tsdf = 1.05 * np.tanh(tsdf_logits)  
+    tsdf_vol = utils.to_vol(inds, tsdf)  
+    mesh = utils.to_mesh(tsdf_vol, voxel_size=voxel_size, level=0, mask=~np.isnan(tsdf_vol))  
+    o3d.io.write_triangle_mesh(outfile, mesh)  
+      
+    return occ_outfile
