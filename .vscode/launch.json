@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+
+        {
+            "name": "inference_tartanair",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/inference_tartanair_stereo.py",
+            "console": "integratedTerminal",
+            "args":  ["--ckpt", "model.ckpt", 
+                "--outputdir", "results/test_stereo_amusement_2",
+                "--config", "config.yml", 
+                "--scene_dir", "/study/dataset/tartanair/amusement_sample_P008/P008"
+            ],
+            "python": "/home/ubuntu/anaconda3/envs/occdepth/bin/python"
+
+        }
+    ]
+}

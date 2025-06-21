@@ -1,0 +1,1 @@
+python scripts/inference_tartanair.py --ckpt model.ckpt --outputdir results/test --neighbor_dir /study/dataset/tartanair/neighborhood_sample_P002/P002/ --config config.yml 
