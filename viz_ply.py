@@ -3,7 +3,11 @@ import os
 import numpy as np 
 from matplotlib.cm import get_cmap
 cmap = get_cmap("jet")  # 选择colormap类型
-ply_dir_name = 'results/test_stereo_amusement_2'
+cmap_gt = get_cmap("rainbow")
+import sys
+
+# ply_dir_name = 'results/test_stereo_office'
+ply_dir_name = sys.argv[1]
 
 
 
@@ -35,11 +39,18 @@ def color_ply_by_green(ply_name, voxel_size):
 
     # 2. 生成全绿色颜色数组（RGB值[0,1,0]）
     num_points = len(pcd.points)
-    green_colors = np.zeros((num_points, 3))  # 初始化为0
-    green_colors[:, 1] = 1  # 绿色通道设为1
+    points_array = np.asarray(pcd.points)
+    z_values = points_array[:, 2]  # 提取Z坐标
+    # 将Z值归一化到0-1范围
+    
+    z_min, z_max = np.min(z_values), np.max(z_values)
+    normalized_z = (z_values - z_min) / (z_max - z_min)
+
+    
+    colors = cmap(normalized_z)[:, :3]  # 提取RGB值（忽略alpha通道）
 
     # 给点云着色
-    pcd.colors = o3d.utility.Vector3dVector(green_colors)
+    pcd.colors = o3d.utility.Vector3dVector(colors)
     # 可视化点云
     voxel_size = voxel_size  # 指定体素边长，根据需求调整
     voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(pcd, voxel_size=voxel_size)
@@ -142,7 +153,10 @@ def create_voxel_wireframe(vertices):
 
 def viz_all_ply():
     for i in range(len(os.listdir(ply_dir_name))):
+        
         pred_ply_name = f'{i}_occ.ply'
+        if not os.path.exists(os.path.join(ply_dir_name, pred_ply_name)):
+            continue
         gt_ply_name = f'{i}_occ_gt.ply' 
         pose_txt_name = f'{i}_pose.npy'
         border_npy_name = f'{i}_border.npy'
@@ -150,13 +164,13 @@ def viz_all_ply():
         border_points = np.load(os.path.join(ply_dir_name, border_npy_name))
         border_lines = create_voxel_wireframe(border_points)
         pose = np.load(os.path.join(ply_dir_name, pose_txt_name))
-        pose_lien_set = draw_pose(pose)
+        pose_line_set = draw_pose(pose)
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
-        gt_voxels = color_ply_by_green(gt_ply_name, 0.06)
-        pred_voxels = color_ply_by_z(pred_ply_name, 0.125)
+        gt_voxels = color_ply_by_green(gt_ply_name, 0.0625)
+        pred_voxels = color_ply_by_z(pred_ply_name, 0.0625)
         print(pred_ply_name)
     
-        voxel_grid = [gt_voxels, pred_voxels, pose_lien_set, coordinate_frame, border_lines]
+        voxel_grid = [gt_voxels, pred_voxels, pose_line_set, coordinate_frame, border_lines]
         o3d.visualization.draw_geometries(voxel_grid) 
 
 def viz_gt_ply():
@@ -167,10 +181,10 @@ def viz_gt_ply():
         print(i)
         gt_voxels = color_ply_by_z(gt_ply_name, 0.25)
         pose = np.load(os.path.join(ply_dir_name, pose_txt_name))
-        pose_lien_set = draw_pose(pose)
+        pose_line_set = draw_pose(pose)
         coordinate_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=1.0)
     
-        voxel_grid = [gt_voxels, pose_lien_set, coordinate_frame]
+        voxel_grid = [gt_voxels, pose_line_set, coordinate_frame]
         o3d.visualization.draw_geometries(voxel_grid) 
 
 if __name__ == '__main__':

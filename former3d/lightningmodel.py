@@ -5,7 +5,7 @@ import open3d as o3d
 import torch
 import pytorch_lightning as pl
 
-from former3d import collate, data, utils
+from former3d import collate, dataset, utils
 from former3d import sdfformer
 
 
@@ -148,7 +148,7 @@ class LightningModel(pl.LightningModule):
             batch_size = self.config["finetune_batch_size"]
 
         info_files = utils.load_info_files(self.config["scannet_dir"], split)
-        dset = data.Dataset(
+        dset = dataset.Dataset(
             info_files,
             self.config["tsdf_dir"],
             self.config[f"n_imgs_{split}"],

@@ -12,7 +12,7 @@ import pytorch_lightning as pl
 import spconv.pytorch as spconv  
 
 # Import Former3D modules  
-from former3d import data, lightningmodel, utils  
+from former3d import dataset, lightningmodel, utils  
 from former3d.net3d.sparse3d import bxyz2xyzb  
 from former3d.utils import read_traj_file, pose_quat2mat
 from skimage import measure
@@ -293,7 +293,7 @@ def load_one_scene(scene_dir, n_imgs, cropsize, frustum_depth=16, voxel_size=0.2
   
     # Prepare projection matrices  
     factors = np.array([1 / 16, 1 / 8, 1 / 4])  
-    proj_mats = data.get_proj_mats(intr, np.linalg.inv(scene_pose), factors)  
+    proj_mats = dataset.get_proj_mats(intr, np.linalg.inv(scene_pose), factors)  
     proj_mats = {k: torch.from_numpy(v)[None].cuda() for k, v in proj_mats.items()}  
       
     
@@ -326,7 +326,7 @@ def inference_tartanair(model, scene_dir, outfile, n_imgs, cropsize, frustum_dep
         # Prepare batch for the model  
         # print(frame_inds)
         tile_img_paths = [selected_rgb_files[i] for i in frame_inds]
-        tile_imgs = data.load_rgb_imgs(tile_img_paths, imheight, imwidth)
+        tile_imgs = dataset.load_rgb_imgs(tile_img_paths, imheight, imwidth)
         tile_depths = [np.load(selected_depth_files[idx // 2]) for idx in frame_inds ]
         tile_imgs_torch = [torch.from_numpy(rgb_img).cuda() for rgb_img in tile_imgs ]
         tile_poses = scene_pose[frame_inds]
@@ -366,7 +366,7 @@ def inference_tartanair(model, scene_dir, outfile, n_imgs, cropsize, frustum_dep
         )  
 
         save_occupancy_as_pointcloud(occupied_voxel_inds[:,1:],  tile["origin"], model.sdfformer.resolutions["fine"], f'{args.outputdir}/{tile_idx}_occ.ply')
-        cv2.imwrite(f'{args.outputdir}/{tile_idx}.png', tile_imgs[0].transpose(1, 2, 0)[:,:,::-1]*data.img_std_rgb + data.img_mean_rgb)
+        cv2.imwrite(f'{args.outputdir}/{tile_idx}.png', tile_imgs[0].transpose(1, 2, 0)[:,:,::-1]*dataset.img_std_rgb + dataset.img_mean_rgb)
         # Create a TSDF volume for mesh extraction  
         vol_dim = np.ceil((tile["maxbound_ind"] - tile["origin_ind"]) * 4).astype(int)  
         tsdf_vol = np.ones(vol_dim) * 1.0  

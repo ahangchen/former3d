@@ -8,7 +8,7 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.plugins import DDPPlugin
 
-from former3d import data, lightningmodel
+from former3d import dataset, lightningmodel
 
 
 class CudaClearCacheCallback(pl.Callback):

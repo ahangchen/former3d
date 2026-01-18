@@ -12,10 +12,36 @@
             "program": "scripts/inference_tartanair_stereo.py",
             "console": "integratedTerminal",
             "args":  ["--ckpt", "model.ckpt", 
-                "--outputdir", "results/test_stereo_amusement_2",
+                "--outputdir", "results/test_stereo_amusement",
                 "--config", "config.yml", 
                 "--scene_dir", "/study/dataset/tartanair/amusement_sample_P008/P008"
             ],
+            "python": "/home/ubuntu/anaconda3/envs/occdepth/bin/python"
+
+        },
+        {
+            "name": "inference_tartanair_office",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "scripts/inference_tartanair_stereo.py",
+            "console": "integratedTerminal",
+            "args":  ["--ckpt", "model.ckpt", 
+                "--outputdir", "results/test_stereo_office",
+                "--config", "config.yml", 
+                "--scene_dir", "/study/dataset/tartanair/office2_sample_P003/P003"
+            ],
+            "python": "/home/ubuntu/anaconda3/envs/occdepth/bin/python"
+
+        },
+        {
+            "name": "viz_ply",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "viz_ply.py",
+            "console": "integratedTerminal",
+            "args":  ["results/test_stereo_amusement_2"
+            ],
+            "env": {"CUDA_VISIBLE_DEVICES": "1"},
             "python": "/home/ubuntu/anaconda3/envs/occdepth/bin/python"
 
         }

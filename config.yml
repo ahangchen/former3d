@@ -1,6 +1,6 @@
 n_imgs_train: 20
 n_imgs_val: 20
-voxel_size: 0.125
+voxel_size: 0.0625
 crop_size_train: [96, 96, 48]
 crop_size_val: [96, 96, 48]
 attn_heads: 2

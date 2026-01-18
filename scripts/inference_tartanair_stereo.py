@@ -17,7 +17,9 @@ from former3d import data, lightningmodel, utils
 from former3d.net3d.sparse3d import bxyz2xyzb  
 from former3d.utils import read_traj_file, pose_quat2mat
 from skimage import measure
-  
+import shutil
+from former3d.dataset.tatanair_util import load_one_scene
+
 def generate_voxel_coordinates(xmin, xmax, ymin, ymax, zmin, zmax, voxel_size):
     """
     生成三维体素坐标网格，覆盖范围 [xmin, xmax] × [ymin, ymax] × [zmin, zmax]
@@ -66,57 +68,6 @@ K = np.array([
 imheight, imwidth = 480, 640
 
 
-def load_tartanair_scene(scene_dir):  
-    """Load RGB, depth images and poses from TartanAir dataset."""  
-      
-    # Load camera intrinsics (TartanAir uses a fixed intrinsic)  
-    # Default TartanAir intrinsics for 640x480 images  
-    intr = K
-      
-    # Load scene scene data  
-    scene_left_dir = os.path.join(scene_dir, 'image_left')  
-    scene_left_files = sorted([os.path.join(scene_left_dir, f) for f in os.listdir(scene_left_dir) if f.endswith('.png')])  
-
-    scene_right_dir = os.path.join(scene_dir, 'image_right')
-    scene_right_files = sorted([os.path.join(scene_right_dir, f) for f in os.listdir(scene_right_dir) if f.endswith('.png')])
-    
-    scene_depth_dir = os.path.join(scene_dir, 'depth_left')  
-    scene_depth_files = sorted([os.path.join(scene_depth_dir, f) for f in os.listdir(scene_depth_dir) if f.endswith('.npy')])  
-      
-    scene_left_pose_file = os.path.join(scene_dir, 'pose_left.txt')  
-    scene_left_poses = np.array(read_traj_file(scene_left_pose_file))  
-
-    scene_right_pose_file = os.path.join(scene_dir, 'pose_right.txt')  
-    scene_right_poses = np.array(read_traj_file(scene_right_pose_file))  
-
-    scene_right_poses = np.array([np.linalg.inv(scene_left_poses[i]) @ scene_right_poses[i] for i in range(len(scene_left_poses))])
-    scene_left_poses = np.array([np.eye(4) for i in range(len(scene_left_poses))])
-      
-    return intr, scene_left_files, scene_right_files, scene_depth_files, scene_left_poses, scene_right_poses
-  
-  
-def get_scene_bounds(pose, intr, depth, voxel_size):  
-    """Calculate scene bounds from camera poses and intrinsics."""  
-    x = np.arange(imwidth)  # 水平坐标 [0, 1, ..., W-1]
-    y = np.arange(imheight)  # 垂直坐标 [0, 1, ..., H-1]
-    xx, yy = np.meshgrid(x, y)  # 生成网格坐标
-    coordinates = np.stack([xx, yy], axis=-1)  # 合并为 (H, W, 2)
-    coord_xy1 = np.concatenate([coordinates.reshape(-1, 2), np.ones((imwidth*imheight, 1))], axis=1) # (H*W, 3)
-    frust_pts_cam = (  
-        np.linalg.inv(intr) @ coord_xy1.T  
-    ).T * np.array([depth.reshape(-1), depth.reshape(-1), depth.reshape(-1)]).transpose(1, 0)
-    frust_pts_world = (  
-        pose @ np.c_[frust_pts_cam, np.ones(len(frust_pts_cam))].T  
-    ).transpose(1, 0)[..., :3]  
-  
-    min_10_x = int(np.percentile(frust_pts_world[:, 0], 5))
-    max_80_x = int(np.percentile(frust_pts_world[:, 0], 80))
-    min_10_y = int(np.percentile(frust_pts_world[:, 1], 5))
-    max_80_y = int(np.percentile(frust_pts_world[:, 1], 80))
-    min_10_z = int(np.percentile(frust_pts_world[:, 2], 5))
-    max_80_z = int(np.percentile(frust_pts_world[:, 2], 80))
-    query_world_pts = np.array([(min_10_x, min_10_y, min_10_z)])# generate_voxel_coordinates(min_10_x, max_80_x, min_10_y, max_80_y, min_10_z, max_80_z, voxel_size)
-    return query_world_pts, frust_pts_world
   
   
 def get_tiles(minbound, maxbound, cropsize_voxels_fine, voxel_size_fine):  
@@ -302,55 +253,11 @@ def generate_tsdf_04(sample_pts, depth_imgs, poses, voxel_size):
     tsdf_16 = block_reduce(tsdf_08, block_size=(2, 2, 2), func=np.min)
     return tsdf_04, tsdf_08, tsdf_16
 
-
-def load_one_scene(scene_dir, n_imgs, cropsize, frustum_depth=16, voxel_size=0.25):
-    intr, scene_left_files, scene_right_files, scene_depth_files, scene_left_poses, scene_right_poses = load_tartanair_scene(scene_dir)  
-
-    cropsize_voxels_coarse = np.array(cropsize) // 4  
-    x = np.arange(0, cropsize_voxels_coarse[0], dtype=np.int32)  
-    y = np.arange(0, cropsize_voxels_coarse[1], dtype=np.int32)  
-    z = np.arange(0, cropsize_voxels_coarse[2], dtype=np.int32)  
-    yy, xx, zz = np.meshgrid(y, x, z)  
-    base_voxel_inds = np.c_[xx.flatten(), yy.flatten(), zz.flatten()]  
-
-    voxel_size_coarse = voxel_size * 4  
-
-    infos = []
-    for i in range(len(scene_depth_files)):
-        info = {}
-        depth = np.load(scene_depth_files[i])
-        query_world_pts, frust_pts_world = get_scene_bounds(  
-            scene_left_poses[i], intr, depth, voxel_size
-        )  
-
-        # Prepare projection matrices  
-        factors = np.array([1 / 16, 1 / 8, 1 / 4])
-        selected_poses = np.array([scene_left_poses[i], scene_right_poses[i]])
-        proj_mats = data.get_proj_mats(intr, np.linalg.inv(selected_poses), factors)  
-        proj_mats = {k: torch.from_numpy(v)[None].cuda() for k, v in proj_mats.items()}
-        origin = np.array([-cropsize[0] // 8, -cropsize[1] // 8, 0])*voxel_size_coarse
-        info = {
-            'imgs': [scene_left_files[i], scene_right_files[i]],
-            'depths': [scene_depth_files[i]],
-            'proj_mats': proj_mats,
-            'poses': np.array([scene_left_poses[i], scene_right_poses[i]]),
-            'query_world_pts': query_world_pts, 
-            'gt_world_pts': frust_pts_world,
-            "voxel_inds": torch.from_numpy(base_voxel_inds),  
-            "voxel_coords": torch.from_numpy(  
-                base_voxel_inds * voxel_size_coarse  + origin  
-            ).float(),  
-            'origin': origin
-        }
-        infos.append(info)
-    return infos
-
-        
      
 def inference_tartanair(model, scene_dir, outfile, n_imgs, cropsize, frustum_depth, voxel_size=0.04):  
     """Run inference on TartanAir dataset."""  
     # Load scene data  
-    infos = load_one_scene(scene_dir, n_imgs, cropsize, frustum_depth, voxel_size)
+    infos = load_one_scene(scene_dir, cropsize, voxel_size)
 
     
       
@@ -418,6 +325,7 @@ def inference_tartanair(model, scene_dir, outfile, n_imgs, cropsize, frustum_dep
         # Get occupied voxel coordinates  
         occupied_voxel_inds = voxel_outputs["fine"].indices[occupancy].cpu()  
         save_occupancy_as_pointcloud(occupied_voxel_inds[:,1:],  info["origin"], model.sdfformer.resolutions["fine"], f'{args.outputdir}/{i}_occ.ply')
+        print('save pred occ')
         cv2.imwrite(f'{args.outputdir}/{i}.png', tile_imgs[0].transpose(1, 2, 0)[:,:,::-1]*data.img_std_rgb + data.img_mean_rgb)
         np.save(f'{args.outputdir}/{i}_pose.npy', info['poses'][0])
         
@@ -444,6 +352,8 @@ if __name__ == "__main__":
         model = load_model(args.ckpt, config['use_proj_occ'], config)  
           
         # Create output directory if it doesn't exist  
+        if os.path.exists(args.outputdir):
+            shutil.rmtree(args.outputdir)
         os.makedirs(args.outputdir, exist_ok=True)  
           
         # Run inference  

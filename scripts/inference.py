@@ -11,7 +11,7 @@ import torch
 import pytorch_lightning as pl
 import spconv.pytorch as spconv
 
-from former3d import data, lightningmodel, utils
+from former3d import dataset, lightningmodel, utils
 from former3d.net3d.sparse3d import bxyz2xyzb
 
 
@@ -153,7 +153,7 @@ def get_img_feats(model, imheight, imwidth, proj_mats, rgb_imgfiles, cam_positio
     }
     cam_positions = torch.from_numpy(cam_positions).cuda()[None]
     for i in range(len(rgb_imgfiles)):
-        rgb_img = data.load_rgb_imgs([rgb_imgfiles[i]], imheight, imwidth)
+        rgb_img = dataset.load_rgb_imgs([rgb_imgfiles[i]], imheight, imwidth)
         rgb_img = torch.from_numpy(rgb_img).cuda()[None]
         cur_proj_mats = {k: v[:, i, None] for k, v in proj_mats.items()}
         print(rgb_img.shape)
@@ -201,7 +201,7 @@ def inference(model, info_file, outfile, n_imgs, cropsize, voxel_size=0.04):
     rgb_imgfiles = np.array(rgb_imgfiles)[selected_frame_inds]
 
     factors = np.array([1 / 16, 1 / 8, 1 / 4])
-    proj_mats = data.get_proj_mats(intr, pose_w2c, factors)
+    proj_mats = dataset.get_proj_mats(intr, pose_w2c, factors)
     proj_mats = {k: torch.from_numpy(v)[None].cuda() for k, v in proj_mats.items()}
 
     img_feats = get_img_feats(

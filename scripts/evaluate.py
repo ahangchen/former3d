@@ -15,7 +15,7 @@ import tqdm
 import multiprocessing
 import pycuda.driver as cuda
 
-from former3d import data, eval_utils, utils
+from former3d import dataset, eval_utils, utils
 from former3d import tsdf_fusion
 
 
@@ -87,7 +87,7 @@ def worker(arguments):
         )
     )
     gt_mesh_o3d.compute_vertex_normals()
-    gt_tsdf_vol, origin, voxel_size = data.load_tsdf(config["tsdf_dir"], scene_name)
+    gt_tsdf_vol, origin, voxel_size = dataset.load_tsdf(config["tsdf_dir"], scene_name)
     tsdf_volume = tsdf_fusion.TSDFVolume(
         np.c_[origin, origin + np.array(gt_tsdf_vol.shape) * voxel_size],
         voxel_size,

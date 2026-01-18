@@ -191,6 +191,14 @@ def read_traj_file(file_path):
     The file format is expected to be:  
     timestamp tx ty tz qx qy qz qw  
     """  
+    T_cam_2_body = np.array(
+                [
+                    [0, 0, 1, 0],
+                    [1, 0, 0, 0],
+                    [0, 1, 0, 0],
+                    [0, 0, 0, 1],
+                ]
+            )
     poses = []  
     # T_b2c = np.eye(4)
     with open(file_path, "r") as f:
@@ -198,7 +206,8 @@ def read_traj_file(file_path):
         for line in lines0:  # xyz+q,GT frame (NED)
             pos_quat0 = np.fromstring(line, dtype=float, sep=" ")
             T_w_cam0 = pos_quat2SE(pos_quat0)
-            poses.append(T_w_cam0)
+            T_ned_cam0 = T_w_cam0 @ T_cam_2_body
+            poses.append(T_ned_cam0)
      
     return poses  
   
