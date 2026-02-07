@@ -122,22 +122,44 @@ class PoseProjection(nn.Module):
         """使用grid_sample投影特征
         
         Args:
-            historical_features: 历史特征 [batch, channels, depth, height, width]
+            historical_features: 历史特征 [batch, channels, depth, height, width] 或 [batch*num_voxels, channels]
             coordinate_mapping: 坐标映射 [batch, depth, height, width, 3]
             
         Returns:
             投影后的特征 [batch, channels, depth, height, width]
         """
+        # 检查输入维度
+        if historical_features.dim() == 2:
+            # 2D输入：[batch*num_voxels, channels]
+            # 需要重塑为5D：[batch, channels, depth, height, width]
+            batch_size = coordinate_mapping.shape[0]
+            depth, height, width = coordinate_mapping.shape[1:4]
+            num_voxels = depth * height * width
+            
+            # 重塑特征
+            historical_features_5d = historical_features.reshape(
+                batch_size, num_voxels, -1
+            ).permute(0, 2, 1).reshape(
+                batch_size, -1, depth, height, width
+            )
+        else:
+            # 已经是5D输入
+            historical_features_5d = historical_features
+        
         # 使用grid_sample进行三线性插值
-        # mode='bilinear' 实际上是三线性插值对于3D
-        # padding_mode='zeros' 对于超出边界的坐标返回0
         projected = F.grid_sample(
-            historical_features,
+            historical_features_5d,
             coordinate_mapping,
             mode='bilinear',
             padding_mode='zeros',
             align_corners=True
         )
+        
+        # 如果需要，将输出重塑回2D
+        if historical_features.dim() == 2:
+            batch_size, channels, depth, height, width = projected.shape
+            projected = projected.reshape(batch_size, channels, -1).permute(0, 2, 1)
+            projected = projected.reshape(-1, channels)
         
         return projected
     
@@ -148,7 +170,7 @@ class PoseProjection(nn.Module):
         """完整投影流程
         
         Args:
-            historical_state: 字典包含 'features', 'sdf', 'occupancy'
+            historical_state: 字典包含 'features', 'sdf', 'occupancy', 'coords'
             historical_pose: 历史相机到世界变换 [4, 4] 或 [batch, 4, 4]
             current_pose: 当前相机到世界变换 [4, 4] 或 [batch, 4, 4]
             
@@ -163,14 +185,7 @@ class PoseProjection(nn.Module):
         
         for key in ['features', 'sdf', 'occupancy']:
             if key in historical_state:
-                # 确保特征有正确的维度顺序
                 features = historical_state[key]
-                
-                # 如果是稀疏表示，需要先转换为稠密
-                if features.dim() == 2:  # 稀疏特征 [num_voxels, channels]
-                    # 这里需要根据具体数据结构实现稀疏到稠密的转换
-                    # 暂时假设已经是稠密表示
-                    pass
                 
                 # 投影特征
                 projected = self.project_features(features, coordinate_mapping)
@@ -178,6 +193,17 @@ class PoseProjection(nn.Module):
         
         # 添加坐标映射信息
         projected_state['coordinate_mapping'] = coordinate_mapping
+        
+        # 如果有坐标信息，也进行投影
+        if 'coords' in historical_state:
+            # 坐标投影需要不同的处理
+            # 这里简化处理，返回原始坐标映射
+            batch_size = coordinate_mapping.shape[0]
+            depth, height, width = coordinate_mapping.shape[1:4]
+            
+            # 创建体素网格坐标
+            grid_coords = self.voxel_grid.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+            projected_state['coords'] = grid_coords.reshape(-1, 3)
         
         return projected_state
 
