@@ -1,0 +1,48 @@
+{
+  "checkpoint_info": {
+    "path": "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/fixed_checkpoints/best_model.pth",
+    "epoch": 10,
+    "val_loss": 0.06659883260726929
+  },
+  "test_results": [
+    {
+      "name": "\u539f\u70b9\u9644\u8fd1",
+      "min": -0.006067428272217512,
+      "max": 0.027099089697003365,
+      "mean": 0.0012092596152797341,
+      "std": 0.004253003746271133,
+      "nan_count": 0,
+      "inf_count": 0,
+      "positive_ratio": 0.547,
+      "near_zero_ratio": 1.0
+    },
+    {
+      "name": "\u5355\u4f4d\u7403\u5185",
+      "min": -0.0027200859040021896,
+      "max": 0.2766394019126892,
+      "mean": 0.07589715719223022,
+      "std": 0.04145210608839989,
+      "nan_count": 0,
+      "inf_count": 0,
+      "positive_ratio": 0.99925,
+      "near_zero_ratio": 0.7635
+    },
+    {
+      "name": "\u8fdc\u70b9",
+      "min": 0.01996830850839615,
+      "max": 1.822510838508606,
+      "mean": 0.41027483344078064,
+      "std": 0.2129446417093277,
+      "nan_count": 0,
+      "inf_count": 0,
+      "positive_ratio": 1.0,
+      "near_zero_ratio": 0.023
+    }
+  ],
+  "model_info": {
+    "input_dim": 3,
+    "hidden_dim": 256,
+    "output_dim": 1,
+    "total_params": 198657
+  }
+}
