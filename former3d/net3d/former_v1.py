@@ -239,8 +239,20 @@ class Former3D(nn.Module):
             pools = []
             for i, pool_scale in enumerate(self.pool_scales):
                 output_size = pool_scale
+                
+                # 修复stride计算，确保至少为1
                 stride = (input_size / output_size).astype(np.int8)
+                stride = np.maximum(stride, 1)  # 确保stride >= 1
+                
+                # 重新计算kernel_size
                 kernel_size = input_size - (output_size - 1) * stride
+                kernel_size = np.maximum(kernel_size, 1)  # 确保kernel_size >= 1
+                
+                # 如果kernel_size仍然无效，跳过这个池化尺度
+                if np.any(kernel_size <= 0):
+                    print(f"警告: 跳过无效的池化尺度 {pool_scale}")
+                    continue
+                
                 out = F.avg_pool3d(inputs_dense, kernel_size=tuple(kernel_size), stride=tuple(stride), ceil_mode=False)
                 out = self.global_convs[i](out)
                 out = F.interpolate(out, input_size.tolist(), mode='nearest')

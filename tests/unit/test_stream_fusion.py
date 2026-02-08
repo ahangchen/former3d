@@ -27,8 +27,8 @@ def sample_attention_data():
     current_coords = torch.randint(0, 20, (N_current, 3))
     historical_coords = torch.randint(0, 20, (N_historical, 3))
     
-    # 图像特征（可选）
-    img_feats = torch.randn(N_current, feature_dim)
+    # 图像特征（可选）- 应该与历史特征数量相同
+    img_feats = torch.randn(N_historical, feature_dim)
     
     return {
         'current_feats': current_feats,

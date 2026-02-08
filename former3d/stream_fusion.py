@@ -58,6 +58,10 @@ class LocalCrossAttention(nn.Module):
         N_current = current_coords.shape[0]
         N_historical = historical_coords.shape[0]
         
+        # 确保坐标是浮点类型（解决测试失败问题）
+        current_coords = current_coords.float()
+        historical_coords = historical_coords.float()
+        
         # 计算所有体素对之间的欧氏距离
         # 使用广播计算距离矩阵
         current_expanded = current_coords.unsqueeze(1)  # [N_current, 1, 3]
@@ -242,7 +246,7 @@ class StreamCrossAttention(nn.Module):
                 historical_feats: torch.Tensor,
                 current_coords: torch.Tensor, 
                 historical_coords: torch.Tensor,
-                img_feats: Optional[torch.Tensor] = None) -> torch.Tensor:
+                projected_img_feats: Optional[torch.Tensor] = None) -> torch.Tensor:
         """前向传播
         
         Args:
@@ -265,11 +269,15 @@ class StreamCrossAttention(nn.Module):
         
         # 2. 分层注意力（可选）
         if self.hierarchical_attention is not None:
-            # 如果有图像特征，可以用于增强历史特征
-            if img_feats is not None and self.img_feat_proj is not None:
-                # 简单地将图像特征与历史特征拼接
-                # 这里需要根据实际图像特征维度调整
-                enhanced_historical = torch.cat([historical_feats, img_feats], dim=-1)
+            # 如果有投影后的图像特征，可以用于增强历史特征
+            # projected_img_feats: [num_historical_voxels, feature_dim] 或 None
+            if projected_img_feats is not None and self.img_feat_proj is not None:
+                # 确保投影后的图像特征与历史体素特征维度匹配
+                if projected_img_feats.shape[0] != historical_feats.shape[0]:
+                    raise ValueError(f"投影图像特征维度 {projected_img_feats.shape} 与历史特征维度 {historical_feats.shape} 不匹配")
+                
+                # 拼接历史体素特征和投影后的图像特征
+                enhanced_historical = torch.cat([historical_feats, projected_img_feats], dim=-1)
                 enhanced_historical = self.img_feat_proj(enhanced_historical)
             else:
                 enhanced_historical = historical_feats
