@@ -25,15 +25,14 @@ from scipy.spatial.transform import Rotation as R
 # 添加项目路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# 强制使用CPU版本（GPU版本有问题）
 try:
-    from former3d.tsdf_fusion import TSDFVolume
-    USE_GPU_TSDF = True
-    print("使用GPU加速的TSDF融合")
-except ImportError as e:
-    print(f"警告: 无法导入GPU TSDF模块: {e}")
-    print("使用CPU版本的简化TSDF融合")
     from simple_tsdf_fusion import SimpleTSDFVolume
     USE_GPU_TSDF = False
+    print("使用CPU版本的简化TSDF融合")
+except ImportError as e:
+    print(f"错误: 无法导入TSDF模块: {e}")
+    sys.exit(1)
 
 
 class TartanAirSDFGenerator:
