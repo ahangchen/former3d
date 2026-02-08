@@ -266,7 +266,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
         batch = self.convert_to_sdfformer_batch(images, poses, intrinsics, origin)
         
         # 2. 生成体素索引
-        voxel_inds_16 = self.generate_voxel_inds(batch_size, device=device)
+        voxel_inds_16 = self.generate_voxel_inds(batch_size, num_voxels_per_batch=500, device=device)
         
         # 3. 如果有历史状态，提取历史特征
         historical_features = None
@@ -367,13 +367,12 @@ class StreamSDFFormerIntegrated(SDFFormer):
         historical_batch_inds = historical_features['batch_inds']
         
         # 执行流式融合
+        # 注意：StreamCrossAttention只需要坐标，不需要批次索引
         fused_features = self.stream_fusion(
             current_feats=current_feats,
             historical_feats=historical_feats,
             current_coords=current_coords,
-            historical_coords=historical_coords,
-            current_batch_inds=current_batch_inds,
-            historical_batch_inds=historical_batch_inds
+            historical_coords=historical_coords
         )
         
         return fused_features

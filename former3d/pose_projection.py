@@ -66,6 +66,12 @@ class PoseProjection(nn.Module):
         batch_inds = torch.unique(voxel_batch_inds)
         for batch_idx_tensor in batch_inds:
             batch_idx = batch_idx_tensor.item()  # 转换为Python整数
+            
+            # 安全检查：确保batch_idx在有效范围内
+            if batch_idx >= batch_size:
+                print(f"警告：batch_idx {batch_idx} 超出范围 (batch_size={batch_size})，跳过")
+                continue
+                
             batch_mask = voxel_batch_inds == batch_idx_tensor
             if torch.sum(batch_mask) == 0:
                 continue
