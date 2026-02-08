@@ -1,8 +1,49 @@
+# Log files
+*.log
+*.log.*
 
-results
-__pycache__
-sdf3dformer.egg-info
-build
-*.so
-*.ckpt
-*.egg-info/
+# Checkpoints and model files
+*checkpoints/
+working_checkpoints/
+final_checkpoints/
+fixed_checkpoints/
+
+# Output directories
+tartanair_sdf_output/
+tartanair_sdf_test/
+test_output/
+visualizations/
+open3d_visualizations/
+open3d_visualizations_fixed/
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Data files
+*.npz
+*.npy
+*.pth
+*.pt
+*.pkl
+*.pickle
+
+# Temporary files
+*.tmp
+*.temp
+
+# System files
+.DS_Store
+Thumbs.db
