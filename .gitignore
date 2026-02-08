@@ -15,6 +15,17 @@ test_output/
 visualizations/
 open3d_visualizations/
 open3d_visualizations_fixed/
+results/
+
+# Build directories
+build/
+dist/
+*.egg-info/
+
+# Binary files
+*.so
+*.dll
+*.dylib
 
 # Virtual environments
 venv/
