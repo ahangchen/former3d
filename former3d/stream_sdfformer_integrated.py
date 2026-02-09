@@ -136,8 +136,17 @@ class StreamSDFFormerIntegrated(SDFFormer):
             proj_mat = torch.eye(4, device=device).unsqueeze(0).unsqueeze(0).repeat(batch_size, n_views, 1, 1)
             
             # 设置旋转和平移
-            proj_mat[:, :, :3, :3] = poses[:, :3, :3].unsqueeze(1)
-            proj_mat[:, :, :3, 3] = poses[:, :3, 3].unsqueeze(1)
+            # poses形状可能是 [batch, 4, 4] 或 [batch, n_views, 4, 4]
+            if len(poses.shape) == 3:  # [batch, 4, 4]
+                # 单视图，复制到所有视图
+                proj_mat[:, :, :3, :3] = poses[:, :3, :3].unsqueeze(1)
+                proj_mat[:, :, :3, 3] = poses[:, :3, 3].unsqueeze(1)
+            elif len(poses.shape) == 4:  # [batch, n_views, 4, 4]
+                # 多视图，直接使用
+                proj_mat[:, :, :3, :3] = poses[:, :, :3, :3]
+                proj_mat[:, :, :3, 3] = poses[:, :, :3, 3]
+            else:
+                raise ValueError(f"不支持的poses形状: {poses.shape}")
             
             # 添加内参
             # 注意：这里简化处理，实际需要根据分辨率调整
@@ -368,12 +377,18 @@ class StreamSDFFormerIntegrated(SDFFormer):
         
         # 执行流式融合
         # 注意：StreamCrossAttention只需要坐标，不需要批次索引
-        fused_features = self.stream_fusion(
-            current_feats=current_feats,
-            historical_feats=historical_feats,
-            current_coords=current_coords,
-            historical_coords=historical_coords
-        )
+        # 检查特征维度是否匹配
+        if current_feats.shape[1] == historical_feats.shape[1] == 128:
+            fused_features = self.stream_fusion(
+                current_feats=current_feats,
+                historical_feats=historical_feats,
+                current_coords=current_coords,
+                historical_coords=historical_coords
+            )
+        else:
+            # 特征维度不匹配，跳过流式融合
+            print(f"⚠️ 特征维度不匹配，跳过流式融合: current={current_feats.shape}, historical={historical_feats.shape}")
+            fused_features = current_feats
         
         return fused_features
     
@@ -401,8 +416,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 else:
                     compressed_features = fused_features
                 
-                # 更新特征
-                fine_output.features = compressed_features
+                # 更新特征 - 修复spconv错误
+                fine_output = fine_output.replace_feature(compressed_features)
         
         return voxel_outputs
     

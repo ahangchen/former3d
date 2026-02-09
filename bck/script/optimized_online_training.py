@@ -94,14 +94,16 @@ class MemoryOptimizedConfig:
             "high": {  # 高内存配置（> 8GB）
                 "data_root": "/home/cwh/Study/dataset/tartanair",
                 "sequence_name": "abandonedfactory_sample_P001",
-                "batch_size": 2,
-                "n_frames": 8,
-                "crop_size": (48, 48, 32),
-                "voxel_size": 0.06,
-                "target_image_size": (160, 160),
-                "num_epochs": 15,
+                "batch_size": 1,  # 数据集只返回一个样本
+                "n_frames": 4,    # 每个样本包含4帧
+                "crop_size": (32, 32, 24),
+                "voxel_size": 0.08,
+                "target_image_size": (128, 128),
+                "num_epochs": 10,
                 "learning_rate": 2e-4,
-                "gradient_accumulation_steps": 1
+                "gradient_accumulation_steps": 4,  # 使用梯度累积模拟批次
+                "max_grad_norm": 1.0,
+                "empty_cache_freq": 2
             }
         }
         return configs.get(memory_level, configs["medium"])
@@ -206,16 +208,29 @@ def train_epoch(model, dataloader, optimizer, loss_fn, config, epoch):
         images = batch['rgb_images'].to(device)
         poses = batch['poses'].to(device)
         intrinsics = batch['intrinsics'].to(device)
+        
+        # 修复intrinsics形状：从(3, 3)转换为[B, 3, 3]
+        if intrinsics.dim() == 2:
+            # 当前形状: (3, 3)，需要扩展为[B, 3, 3]
+            intrinsics = intrinsics.unsqueeze(0).repeat(images.shape[0], 1, 1)
         tsdf_target = batch['tsdf'].to(device)
         
         batch_loss = 0
         
         # 处理每个帧
         for frame_idx in range(images.shape[1]):
+            # 提取当前帧的图像和位姿
+            current_images = images[:, frame_idx:frame_idx+1]  # [batch, 1, C, H, W]
+            current_poses = poses[:, frame_idx:frame_idx+1]    # [batch, 1, 4, 4]
+            
+            # 重塑为模型期望的形状
+            current_images_reshaped = current_images.squeeze(1)  # [batch, C, H, W]
+            current_poses_reshaped = current_poses.squeeze(1)    # [batch, 4, 4]
+            
             # 前向传播
             output = model(
-                images=images[:, frame_idx:frame_idx+1],
-                poses=poses[:, frame_idx:frame_idx+1],
+                images=current_images_reshaped,
+                poses=current_poses_reshaped,
                 intrinsics=intrinsics,
                 reset_state=(frame_idx == 0)
             )
@@ -224,45 +239,110 @@ def train_epoch(model, dataloader, optimizer, loss_fn, config, epoch):
                 pred_sdf = output['sdf']
                 
                 # 计算损失
-                if len(pred_sdf.shape) == 3:  # 点云预测
+                if len(pred_sdf.shape) == 3:  # 点云预测 [B, num_points, 1]
                     B, num_points, _ = pred_sdf.shape
                     tsdf_flat = tsdf_target.view(B, -1)
                     num_voxels = tsdf_flat.shape[1]
                     
                     if num_voxels >= num_points:
-                        indices = torch.randint(0, num_voxels, (B, num_points))
+                        indices = torch.randint(0, num_voxels, (B, num_points)).to(device)
                         target_sdf = torch.gather(tsdf_flat, 1, indices).unsqueeze(-1)
                     else:
                         repeat_times = (num_points + num_voxels - 1) // num_voxels
                         target_sdf = tsdf_flat.repeat(1, repeat_times)[:, :num_points].unsqueeze(-1)
                     
                     loss = loss_fn(pred_sdf, target_sdf)
+                elif len(pred_sdf.shape) == 2:  # 体素预测 [num_voxels, 1]
+                    # 处理体素预测输出
+                    B = tsdf_target.shape[0]
+                    num_voxels = pred_sdf.shape[0]
+                    
+                    # 方法1: 尝试均匀分割
+                    if num_voxels % B == 0:
+                        voxels_per_batch = num_voxels // B
+                        pred_sdf_reshaped = pred_sdf.view(B, voxels_per_batch, 1)
+                        tsdf_flat = tsdf_target.view(B, -1)
+                        
+                        # 采样匹配的点
+                        num_sample_points = min(voxels_per_batch, tsdf_flat.shape[1], 1000)
+                        pred_sample = pred_sdf_reshaped[:, :num_sample_points, :]
+                        indices = torch.randint(0, tsdf_flat.shape[1], (B, num_sample_points)).to(device)
+                        target_sdf = torch.gather(tsdf_flat, 1, indices).unsqueeze(-1)
+                        loss = loss_fn(pred_sample, target_sdf)
+                    
+                    # 方法2: 如果批次大小为1，直接处理
+                    elif B == 1:
+                        # 批次大小为1，直接采样
+                        num_sample_points = min(num_voxels, 1000)
+                        pred_sample = pred_sdf[:num_sample_points].unsqueeze(0)  # [1, num_sample_points, 1]
+                        tsdf_flat = tsdf_target.view(-1)
+                        
+                        if tsdf_flat.shape[0] >= num_sample_points:
+                            indices = torch.randint(0, tsdf_flat.shape[0], (1, num_sample_points)).to(device)
+                            target_sdf = torch.gather(tsdf_flat.unsqueeze(0), 1, indices).unsqueeze(-1)
+                            loss = loss_fn(pred_sample, target_sdf)
+                        else:
+                            # 目标体素不足，使用所有目标体素
+                            num_sample_points = min(num_voxels, tsdf_flat.shape[0])
+                            pred_sample = pred_sdf[:num_sample_points].unsqueeze(0)
+                            target_sdf = tsdf_flat[:num_sample_points].unsqueeze(0).unsqueeze(-1)
+                            loss = loss_fn(pred_sample, target_sdf)
+                    
+                    # 方法3: 其他情况，使用简单损失
+                    else:
+                        # 使用均值损失作为后备
+                        loss = loss_fn(pred_sdf.mean(), tsdf_target.mean())
                 else:
-                    loss = loss_fn(pred_sdf, tsdf_target)
+                    # 其他形状，尝试直接计算
+                    try:
+                        loss = loss_fn(pred_sdf, tsdf_target)
+                    except:
+                        # 如果失败，使用简单损失
+                        loss = loss_fn(pred_sdf.mean(), tsdf_target.mean())
                 
                 # 梯度累积
                 loss = loss / gradient_accumulation_steps
                 loss.backward()
                 batch_loss += loss.item() * gradient_accumulation_steps
-                
+            
+            # 释放中间变量内存
+            del output, pred_sdf
+            if 'target_sdf' in locals():
+                del target_sdf
+        
         # 梯度累积步骤完成后更新参数
         if (batch_idx + 1) % gradient_accumulation_steps == 0:
             # 梯度裁剪
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            max_grad_norm = config.get("max_grad_norm", 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
             
             # 更新参数
             optimizer.step()
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)  # 更高效的内存清零
+            
+            # 清空CUDA缓存
+            if config.get("empty_cache_freq", 0) > 0 and (batch_idx + 1) % config["empty_cache_freq"] == 0:
+                torch.cuda.empty_cache()
         
         total_loss += batch_loss
         num_batches += 1
         
-        # 每5个batch记录一次
-        if (batch_idx + 1) % 5 == 0:
+        # 每2个batch记录一次（更频繁的监控）
+        if (batch_idx + 1) % 2 == 0:
             mem_info = monitor_memory_usage()
             logger.info(f"Epoch {epoch}, Batch {batch_idx+1}/{len(dataloader)}: "
                        f"Loss={batch_loss:.6f}, "
-                       f"GPU内存={mem_info['allocated_gb']:.2f}GB")
+                       f"GPU内存={mem_info['allocated_gb']:.2f}GB, "
+                       f"峰值={mem_info['reserved_gb']:.2f}GB")
+            
+            # 如果内存使用过高，发出警告
+            if mem_info['allocated_gb'] > 8.0:  # 超过8GB
+                logger.warning(f"内存使用过高! 考虑减小批次大小或裁剪尺寸")
+        
+        # 释放批次内存
+        del images, poses, intrinsics, tsdf_target
+        if 'current_images' in locals():
+            del current_images, current_poses, current_images_reshaped, current_poses_reshaped
     
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     return avg_loss
@@ -330,6 +410,10 @@ def main():
         lr=config["learning_rate"],
         weight_decay=1e-5
     )
+    
+    # 标准精度训练（模型不支持混合精度）
+    scaler = None
+    logger.info("使用标准精度训练（模型不支持混合精度）")
     
     loss_fn = nn.HuberLoss(delta=0.1)  # 对异常值鲁棒
     

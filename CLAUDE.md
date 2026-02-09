@@ -7,3 +7,5 @@ Programming Guidelines
 5. **Forbidden:** Using simple, non-equivalent tasks to replace complex tasks;
 6. **Recommended:** After completing a task, review whether there is a better and simpler solution, and use simple, equivalent tasks to replace complex tasks;
 7. **Required**: Use conda environment former3d in /home/cwh/miniconda3/envs/former3d to execute all python related job. 
+8. **Forbidden:** Creation of any simplified versions.
+9. **Forbidden:** Duplicate code.

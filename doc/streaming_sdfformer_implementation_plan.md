@@ -133,10 +133,10 @@ state = {
 #### 4. 流式数据集 (`stream_dataset.py`)
 **功能**：按时间顺序提供图像序列
 **每帧返回**：
-- RGB图像 [H, W, 3]
-- 深度图像 [H, W]（可选，用于监督）
-- 当前相机姿态 [4, 4]
-- 前一帧相机姿态 [4, 4]（用于投影）
+- RGB图像 [B, F, 3, H, W]
+- 深度图像 [B, F, H, W]（可选，用于监督）
+- 当前相机姿态 [B, F, 4, 4]
+- 前一帧相机姿态 [B, F, 4, 4]（用于投影）
 - 序列ID和时间戳
 
 **数据组织**：
@@ -163,7 +163,7 @@ for sequence in dataloader:
     state = None  # 初始化状态
     for t in range(sequence_length):
         # 获取当前帧数据
-        rgb, depth, pose, prev_pose = sequence[t]
+        rgb, depth, pose, prev_pose = sequence[:,t]
         
         # 前向传播（只使用当前图像和前一帧状态）
         output, state = model.forward_stream(rgb, pose, state)

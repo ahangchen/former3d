@@ -42,8 +42,8 @@ class Former3D(nn.Module):
         nums_blocks = [2, 2, 2, 2]
         
         if self.sync_bn == True:
-            BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(nn.SyncBatchNorm))
-            BatchNorm3d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(nn.SyncBatchNorm))
+            BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm1d))
+            BatchNorm3d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm3d))
         else:
             BatchNorm1d = (change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm1d))
             BatchNorm3d = (change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm3d))
@@ -185,7 +185,7 @@ class Former3D(nn.Module):
 
     def weight_initialization(self):
         for m in self.modules():
-            if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.SyncBatchNorm) or isinstance(m, nn.LayerNorm):
+            if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.BatchNorm3d) or isinstance(m, nn.LayerNorm):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
