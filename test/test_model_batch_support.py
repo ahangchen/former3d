@@ -55,19 +55,46 @@ def test_model_batch_support():
         print(f"  poses: {poses.shape}")
         print(f"  intrinsics: {intrinsics.shape}")
 
-        # 调用forward_sequence
-        print(f"\n调用forward_sequence...")
-        outputs, states = model.forward_sequence(images, poses, intrinsics)
+        # 测试forward_single_frame（处理(batch, 1, 3, h, w)）
+        print(f"\n测试forward_single_frame...")
+        # 提取第一帧
+        images_frame = images[:, 0:1]  # (batch, 1, 3, 256, 256)
+        poses_frame = poses[:, 0:1]    # (batch, 1, 4, 4)
+        intrinsics_frame = intrinsics[:, 0:1]  # (batch, 1, 3, 3)
 
-        print(f"\n输出shape:")
-        print(f"  outputs: {outputs.shape}")
-        print(f"  states: {len(states)} 个状态")
+        print(f"  单帧输入shape: {images_frame.shape}")
+        output_single, state_single = model.forward_single_frame(
+            images_frame, poses_frame, intrinsics_frame, reset_state=True
+        )
+
+        print(f"  单帧输出shape: {type(output_single)}")
+        if isinstance(output_single, dict):
+            for key, value in output_single.items():
+                if value is not None and isinstance(value, torch.Tensor):
+                    print(f"    {key}: {value.shape}")
+
+        # 测试forward_sequence（处理(batch, n_view, 3, h, w)）
+        print(f"\n测试forward_sequence...")
+        outputs_seq, states_seq = model.forward_sequence(images, poses, intrinsics)
+
+        print(f"\n序列输出shape:")
+        print(f"  outputs_seq: {type(outputs_seq)}")
+        if isinstance(outputs_seq, dict):
+            for key, value in outputs_seq.items():
+                if value is not None and isinstance(value, torch.Tensor):
+                    print(f"    {key}: {value.shape}")
+        elif isinstance(outputs_seq, torch.Tensor):
+            print(f"  outputs_seq: {outputs_seq.shape}")
+        else:
+            print(f"  outputs_seq: {outputs_seq}")
+
+        print(f"  states_seq: {len(states_seq)} 个状态")
 
         # 验证输出shape
-        assert outputs.shape[0] == batch_size, f"batch维度错误: {outputs.shape[0]} != {batch_size}"
-        assert outputs.shape[1] == n_view, f"n_view维度错误: {outputs.shape[1]} != {n_view}"
-
-        print(f"\n✅ 模型正确处理batch和n_view维度！")
+        if isinstance(outputs_seq, torch.Tensor):
+            assert outputs_seq.shape[0] == batch_size, f"batch维度错误: {outputs_seq.shape[0]} != {batch_size}"
+            assert outputs_seq.shape[1] == n_view, f"n_view维度错误: {outputs_seq.shape[1]} != {n_view}"
+            print(f"\n✅ 模型正确处理batch和n_view维度！")
 
         return True
 

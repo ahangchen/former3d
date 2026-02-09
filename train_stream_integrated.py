@@ -331,7 +331,142 @@ def compute_loss(output, ground_truth, frame_data):
         return nn.functional.mse_loss(sdf_pred, tsdf_gt)
 
 def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
-    """流式训练一个epoch（支持梯度累积）"""
+    """流式训练一个epoch（支持梯度累积）- 修复版：移除batch_idx和frame_idx循环遍历
+    
+    Args:
+        model: StreamSDFFormerIntegrated模型
+        dataloader: 数据加载器
+        optimizer: 优化器
+        device: 设备
+        args: 参数
+        epoch: 当前轮数
+    
+    Returns:
+        float: 平均损失
+    """
+    model.train()
+    total_loss = 0.0
+    total_frames = 0
+    
+    # 获取梯度累积步数
+    accumulation_steps = getattr(args, 'accumulation_steps', 1)
+    
+    # 创建状态管理器
+    if STREAM_STATE_MANAGER_AVAILABLE:
+        state_manager = StreamStateManager(device=device, max_cached_states=5)
+    else:
+        state_manager = None
+
+    # 创建内存管理器
+    if MEMORY_MANAGER_AVAILABLE:
+        memory_manager = MemoryManager(
+            cleanup_frequency=getattr(args, 'cleanup_freq', 10),
+            memory_threshold_gb=getattr(args, 'memory_threshold', 8.0)
+        )
+    else:
+        memory_manager = None
+
+    # 梯度累积计数器
+    accumulation_counter = 0
+    optimizer.zero_grad()
+
+    for batch_idx, batch in enumerate(dataloader):
+        # 确保设备一致性
+        if DEVICE_CONSISTENCY_AVAILABLE:
+            batch = move_to_device(batch, device)
+        else:
+            # 基本设备移动
+            for key in ['rgb_images', 'poses', 'intrinsics', 'tsdf']:
+                if key in batch:
+                    batch[key] = batch[key].to(device)
+        
+        # 获取序列信息
+        batch_size = batch['rgb_images'].shape[0]
+        sequence_length = batch['rgb_images'].shape[1]
+        
+        # 直接将整个batch喂给模型的forward_sequence
+        # batch['rgb_images']: (batch, n_view, 3, H, W)
+        # batch['poses']: (batch, n_view, 4, 4)
+        # batch['intrinsics']: (batch, n_view, 3, 3) - 注意：intrinsics的shape需要调整
+        images = batch['rgb_images']  # (batch, n_view, 3, H, W)
+        poses = batch['poses']  # (batch, n_view, 4, 4)
+        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3) - 需要扩展
+
+        # 扩展intrinsics到正确的维度：从(batch, 3, 3)到(batch, n_view, 3, 3)
+        if len(intrinsics.shape) == 3:  # (batch, 3, 3)
+            intrinsics = intrinsics.unsqueeze(1).expand(-1, sequence_length, -1, -1)  # (batch, n_view, 3, 3)
+
+        # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
+        outputs, states = model.forward_sequence(images, poses, intrinsics)
+
+        # 计算损失（整个序列的损失）
+        # batch['tsdf']: (batch, 1, D, H, W)
+        # outputs: (batch, n_view, ...)
+        loss = compute_loss(outputs, batch['tsdf'], {})
+        loss = loss / accumulation_steps  # 除以累积步数
+
+        # 反向传播（累积梯度）
+        loss.backward()
+
+        # 累积梯度计数
+        accumulation_counter += 1
+
+        # 达到累积步数或最后一个batch时更新参数
+        if accumulation_counter % accumulation_steps == 0:
+            # 梯度裁剪（可选，防止梯度爆炸）
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+            # 更新参数
+            optimizer.step()
+            optimizer.zero_grad()
+
+            # 记录损失（需要乘回累积步数）
+            total_loss += loss.item() * accumulation_steps
+            total_frames += sequence_length
+
+        # 内存管理：定期清理或按需清理
+        if memory_manager is not None:
+            # 每个batch后执行定期清理
+            memory_manager.step()
+
+            # 检查是否需要按阈值清理
+            memory_manager.cleanup_if_needed()
+
+        # 打印进度
+        if (batch_idx + 1) % 10 == 0:
+            avg_loss = total_loss / max(total_frames, 1)
+            logger.info(f"Epoch {epoch+1}, Batch {batch_idx+1}/{len(dataloader)}, "
+                       f"Loss: {avg_loss:.6f}, Accumulation: {accumulation_counter % accumulation_steps + 1}/{accumulation_steps}")
+
+    # 处理剩余的累积梯度
+    if accumulation_counter % accumulation_steps != 0:
+        # 梯度裁剪
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+        # 更新参数
+        optimizer.step()
+        optimizer.zero_grad()
+
+        # 记录损失
+        total_loss += loss.item() * (accumulation_counter % accumulation_steps)
+        total_frames += sequence_length
+
+    # 计算平均损失
+    avg_loss = total_loss / max(total_frames, 1)
+    return avg_loss
+    """流式训练一个epoch（支持梯度累积）- 修复版：移除batch_idx和frame_idx循环遍历
+    
+    Args:
+        model: StreamSDFFormerIntegrated模型
+        dataloader: 数据加载器
+        optimizer: 优化器
+        device: 设备
+        args: 参数
+        epoch: 当前轮数
+    
+    Returns:
+        float: 平均损失
+    """
     model.train()
     total_loss = 0.0
     total_frames = 0
@@ -372,50 +507,29 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         batch_size = batch['rgb_images'].shape[0]
         sequence_length = batch['rgb_images'].shape[1]
         
-        # 按帧处理序列
-        sequence_loss = 0.0
-        current_sequence_id = None
+        # 直接将整个batch喂给模型的forward_sequence
+        # batch['rgb_images']: (batch, n_view, 3, H, W)
+        # batch['poses']: (batch, n_view, 4, 4)
+        # batch['intrinsics']: (batch, n_view, 3, 3) - 注意：intrinsics的shape需要调整
+        images = batch['rgb_images']  # (batch, n_view, 3, H, W)
+        poses = batch['poses']  # (batch, n_view, 4, 4)
+        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3) - 需要扩展
         
-        for frame_idx in range(sequence_length):
-            # 提取当前帧数据
-            frame_data = extract_frame_data(batch, frame_idx, device)
-            
-            # 获取序列ID
-            sequence_id = frame_data['sequence_id'][0].item() if batch_size == 1 else 0
-            
-            # 检查是否需要重置状态
-            reset_state = False
-            if state_manager is not None:
-                if current_sequence_id != sequence_id:
-                    # 新序列，重置状态
-                    state_manager.reset(sequence_id)
-                    current_sequence_id = sequence_id
-                    reset_state = True
-                else:
-                    reset_state = (frame_idx == 0)
-            
-            # 获取历史状态
-            historical_state = state_manager.get_state() if state_manager is not None else None
-            
-            # 前向传播
-            output, new_state = model.forward_single_frame(
-                images=frame_data['images'],
-                poses=frame_data['poses'],
-                intrinsics=frame_data['intrinsics'],
-                reset_state=reset_state
-            )
-            
-            # 计算损失（除以累积步数以保持梯度一致性）
-            loss = compute_loss(output, batch['tsdf'], frame_data)
-            loss = loss / accumulation_steps  # 除以累积步数
-            sequence_loss += loss
-            
-            # 反向传播（累积梯度）
-            loss.backward()
-            
-            # 更新状态
-            if state_manager is not None and new_state is not None:
-                state_manager.update_state(new_state, sequence_id, frame_idx, reset_state=False)
+        # 扩展intrinsics到正确的维度：从(batch, 3, 3)到(batch, n_view, 3, 3)
+        if len(intrinsics.shape) == 3:  # (batch, 3, 3)
+            intrinsics = intrinsics.unsqueeze(1).expand(-1, sequence_length, -1, -1)  # (batch, n_view, 3, 3)
+        
+        # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
+        outputs, states = model.forward_sequence(images, poses, intrinsics)
+        
+        # 计算损失（整个序列的损失）
+        # batch['tsdf']: (batch, 1, D, H, W)
+        # outputs: (batch, n_view, ...)
+        loss = compute_loss(outputs, batch['tsdf'], {})
+        loss = loss / accumulation_steps  # 除以累积步数
+        
+        # 反向传播（累积梯度）
+        loss.backward()
         
         # 累积梯度计数
         accumulation_counter += 1
@@ -430,12 +544,9 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
             optimizer.zero_grad()
             
             # 记录损失（需要乘回累积步数）
-            total_loss += sequence_loss.item() * accumulation_steps
+            total_loss += loss.item() * accumulation_steps
             total_frames += sequence_length
             
-            # 重置序列损失
-            sequence_loss = 0.0
-        
         # 内存管理：定期清理或按需清理
         if memory_manager is not None:
             # 每个batch后执行定期清理
@@ -460,13 +571,12 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         optimizer.zero_grad()
         
         # 记录损失
-        total_loss += sequence_loss.item() * (accumulation_counter % accumulation_steps)
+        total_loss += loss.item() * (accumulation_counter % accumulation_steps)
         total_frames += sequence_length
     
     # 计算平均损失
     avg_loss = total_loss / max(total_frames, 1)
     return avg_loss
-
 def test_model(model, dataloader, device, args):
     """测试模型"""
     model.eval()

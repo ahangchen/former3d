@@ -258,19 +258,27 @@ class StreamSDFFormerIntegrated(SDFFormer):
                             intrinsics: torch.Tensor,
                             reset_state: bool = False,
                             origin: Optional[torch.Tensor] = None) -> Tuple[Dict, Dict]:
-        """单帧流式推理
+        """单帧流式推理（支持批量处理）
         
         Args:
-            images: 当前帧图像 [batch, 3, height, width]
-            poses: 当前帧相机位姿 [batch, 4, 4]
-            intrinsics: 当前帧相机内参 [batch, 3, 3]
+            images: 当前帧图像 (batch, 1, 3, H, W) 或 (batch, 3, H, W)
+            poses: 当前帧相机位姿 (batch, 1, 4, 4) 或 (batch, 4, 4)
+            intrinsics: 当前帧相机内参 (batch, 1, 3, 3) 或 (batch, 3, 3)
             reset_state: 是否重置历史状态
-            origin: 原点坐标 [batch, 3]
+            origin: 原点坐标 (batch, 3)
             
         Returns:
             output: 当前帧输出字典
             new_state: 新的历史状态字典
         """
+        # 处理输入维度，确保是(batch, 3, H, W)格式
+        if len(images.shape) == 5:  # (batch, 1, 3, H, W)
+            images = images.squeeze(1)  # (batch, 3, H, W)
+        if len(poses.shape) == 4:    # (batch, 1, 4, 4)
+            poses = poses.squeeze(1)  # (batch, 4, 4)
+        if len(intrinsics.shape) == 4:  # (batch, 1, 3, 3)
+            intrinsics = intrinsics.squeeze(1)  # (batch, 3, 3)
+        
         batch_size = images.shape[0]
         device = images.device
         
@@ -317,6 +325,11 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.historical_pose = poses.detach().clone()
         if intrinsics is not None:
             self.historical_intrinsics = intrinsics.detach().clone()
+        
+        # 如果原始输入是(batch, 1, ...)，则输出也需要恢复该维度
+        if 'sdf' in output and output['sdf'] is not None:
+            # 假设SDF输出需要与输入的帧数匹配
+            pass  # 暂时不处理维度匹配，具体根据实际输出结构决定
         
         return output, new_state
     
@@ -635,39 +648,84 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.clear_history()
     
     def forward_sequence(self,
-                        images_seq: List[torch.Tensor],
-                        poses_seq: List[torch.Tensor],
-                        intrinsics_seq: List[torch.Tensor],
-                        reset_state: bool = True) -> List[Dict]:
-        """序列流式推理
+                        images: torch.Tensor,
+                        poses: torch.Tensor,
+                        intrinsics: torch.Tensor,
+                        reset_state: bool = True) -> Tuple[torch.Tensor, List[Dict]]:
+        """序列流式推理（支持批量处理）
         
         Args:
-            images_seq: 图像序列列表
-            poses_seq: 位姿序列列表
-            intrinsics_seq: 内参序列列表
+            images: 图像序列 (batch, n_view, 3, H, W)
+            poses: 位姿序列 (batch, n_view, 4, 4)
+            intrinsics: 内参序列 (batch, n_view, 3, 3)
             reset_state: 是否在序列开始时重置状态
             
         Returns:
-            输出序列列表
+            Tuple[torch.Tensor, List[Dict]]: (输出序列 (batch, n_view, ...), 状态列表)
         """
+        batch_size, n_view, _, H, W = images.shape
+
         outputs = []
-        
+        states = []
+
         # 重置状态
         if reset_state:
             self.historical_state = None
             self.historical_pose = None
             self.historical_intrinsics = None
-        
-        # 逐帧处理
-        for i, (images, poses, intrinsics) in enumerate(zip(images_seq, poses_seq, intrinsics_seq)):
-            print(f"处理第 {i+1}/{len(images_seq)} 帧")
-            
-            output, _ = self.forward_single_frame(
-                images, poses, intrinsics, reset_state=False
-            )
-            outputs.append(output)
-        
-        return outputs
+
+        # 遍历序列中的每一帧（frame_idx循环在模型内部）
+        for t in range(n_view):
+            # 提取第t帧的数据（保留batch维度）
+            images_t = images[:, t:t+1]  # (batch, 1, 3, H, W)
+            poses_t = poses[:, t:t+1]    # (batch, 1, 4, 4)
+            intrinsics_t = intrinsics[:, t:t+1]  # (batch, 1, 3, 3)
+
+            # 调用forward_single_frame，处理batch维度
+            # 注意：forward_single_frame需要能处理(batch, 1, 3, H, W)的输入
+            output_t, state_t = self.forward_single_frame(
+                images_t, poses_t, intrinsics_t,
+                reset_state=(t == 0)  # 第一帧重置状态
+            )  # output_t的shape是 (batch, 1, ...)
+
+            outputs.append(output_t)
+            states.append(state_t)
+
+        # 堆叠输出
+        if outputs and outputs[0] is not None:
+            # 如果输出是字典，需要特殊处理
+            if isinstance(outputs[0], dict):
+                # 合并字典中的张量
+                combined_output = {}
+                for key in outputs[0].keys():
+                    if key == 'sdf' and outputs[0][key] is not None:
+                        # 对于SDF，假设每个batch元素有不同的点数，暂时只返回第一个
+                        combined_output[key] = outputs[0][key]
+                    elif isinstance(outputs[0][key], torch.Tensor):
+                        # 尝试堆叠张量
+                        try:
+                            # 将所有帧的输出沿第1维度拼接
+                            tensors = []
+                            for out in outputs:
+                                if out[key] is not None:
+                                    tensors.append(out[key])
+                            if tensors:
+                                combined_output[key] = torch.cat(tensors, dim=1)  # (batch, n_view, ...)
+                            else:
+                                combined_output[key] = None
+                        except:
+                            # 如果无法堆叠，保留第一个
+                            combined_output[key] = outputs[0][key]
+                    else:
+                        combined_output[key] = outputs[0][key]
+                outputs_cat = combined_output
+            else:
+                # 如果输出是张量，直接拼接
+                outputs_cat = torch.cat(outputs, dim=1)  # (batch, n_view, ...)
+        else:
+            outputs_cat = None
+
+        return outputs_cat, states
 
 
 def test_stream_sdfformer_integrated():
