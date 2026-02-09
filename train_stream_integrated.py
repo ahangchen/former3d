@@ -79,10 +79,10 @@ def parse_args():
     parser.add_argument('--num-workers', type=int, default=4, help='数据加载器工作进程数')
     
     # 模型参数
-    parser.add_argument('--attn-heads', type=int, default=2, help='注意力头数')
+    parser.add_argument('--attn-heads', type=int, default=1, help='注意力头数')
     parser.add_argument('--attn-layers', type=int, default=1, help='注意力层数')
-    parser.add_argument('--voxel-size', type=float, default=0.04, help='体素大小')
-    parser.add_argument('--crop-size', type=str, default='32,32,24', help='裁剪尺寸')
+    parser.add_argument('--voxel-size', type=float, default=0.16, help='体素大小')
+    parser.add_argument('--crop-size', type=str, default='12,12,8', help='裁剪尺寸')
     
     # 数据参数
     parser.add_argument('--data-root', type=str, default='/home/cwh/Study/dataset/tartanair', help='TartanAir原始数据根目录')
@@ -235,7 +235,7 @@ def extract_frame_data(batch, frame_idx, device):
     }
 
 def compute_loss(output, ground_truth, frame_data):
-    """计算损失函数 - 处理点云格式的SDF输出"""
+    """计算损失函数 - 处理点云格式的SDF输出与体素网格TSDF真值的匹配"""
     import torch.nn as nn
     
     # 提取SDF预测（点云格式）
@@ -251,19 +251,56 @@ def compute_loss(output, ground_truth, frame_data):
     
     # 获取TSDF真值（体素网格格式）
     tsdf_gt_raw = ground_truth  # [batch, 1, H, W, D]
-    tsdf_gt = tsdf_gt_raw.permute(0, 1, 4, 2, 3)  # [batch, 1, D, H, W]
     
     # 检查SDF预测形状
     if len(sdf_pred.shape) == 2 and sdf_pred.shape[1] == 1:
         # 点云格式 [num_points, 1]
-        logger.info(f"点云SDF预测: {sdf_pred.shape}")
-        logger.info(f"TSDF真值: {tsdf_gt.shape}")
+        # 我们需要将点云SDF与体素网格TSDF对齐
         
-        # 简化处理：返回一个小的占位损失
-        # 在实际实现中，需要将点云坐标映射到体素网格并采样对应的TSDF值
-        return torch.tensor(0.1, device=sdf_pred.device, requires_grad=True)
+        # 方法1：从体素网格中采样对应的TSDF值
+        # 这需要知道点云在体素网格中的坐标
+        # 由于我们不知道点云坐标，使用简化方法
+        
+        # 简化方法：计算统计损失
+        # 1. 确保SDF预测在合理范围内（-1到1）
+        sdf_clamped = torch.clamp(sdf_pred, -1.0, 1.0)
+        
+        # 2. 计算TSDF真值的统计信息
+        tsdf_flat = tsdf_gt_raw.view(-1)
+        valid_tsdf = tsdf_flat[tsdf_flat != 0]  # 只考虑非零TSDF值
+        
+        if len(valid_tsdf) > 0:
+            # 3. 计算SDF预测与TSDF真值的统计匹配损失
+            # 使用均值和方差匹配
+            pred_mean = sdf_clamped.mean()
+            pred_std = sdf_clamped.std()
+            
+            gt_mean = valid_tsdf.mean()
+            gt_std = valid_tsdf.std()
+            
+            # 计算均值损失和方差损失
+            mean_loss = nn.functional.mse_loss(pred_mean.unsqueeze(0), gt_mean.unsqueeze(0))
+            std_loss = nn.functional.mse_loss(pred_std.unsqueeze(0), gt_std.unsqueeze(0))
+            
+            # 组合损失
+            loss = mean_loss + 0.5 * std_loss
+            
+            # 只在第一帧记录日志，避免日志过多
+            if 'frame_idx' in frame_data and frame_data['frame_idx'] == 0:
+                logger.info(f"点云SDF预测: {sdf_pred.shape}, 均值: {pred_mean:.3f}, 标准差: {pred_std:.3f}")
+                logger.info(f"TSDF真值: {tsdf_gt_raw.shape}, 均值: {gt_mean:.3f}, 标准差: {gt_std:.3f}")
+                logger.info(f"统计损失: 均值损失={mean_loss:.4f}, 方差损失={std_loss:.4f}")
+            
+            return loss
+        else:
+            # 如果没有有效的TSDF值，使用占位损失
+            logger.warning("⚠️ 没有有效的TSDF真值，使用占位损失")
+            return torch.tensor(0.1, device=sdf_pred.device, requires_grad=True)
     else:
         # 其他格式，尝试使用原始MSE
+        # 调整预测形状以匹配真值
+        tsdf_gt = tsdf_gt_raw.permute(0, 1, 4, 2, 3)  # [batch, 1, D, H, W]
+        
         if sdf_pred.shape != tsdf_gt.shape:
             # 调整预测形状以匹配真值
             sdf_pred = torch.nn.functional.interpolate(
