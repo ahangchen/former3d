@@ -129,6 +129,54 @@ class MemoryManager:
 
         return False
 
+    def force_cleanup(self, verbose: bool = True) -> None:
+        """
+        强制执行内存清理（用于显存碎片化严重的情况）
+
+        执行更激进的清理，包括重置显存分配器状态
+
+        Args:
+            verbose: 是否打印详细信息
+        """
+        logger.info("执行强制显存清理...")
+
+        # 1. 清理CUDA缓存
+        if torch.cuda.is_available():
+            before_reserved = torch.cuda.memory_reserved() / 1024**3
+            before_allocated = torch.cuda.memory_allocated() / 1024**3
+
+            # 多次调用确保完全清理
+            torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
+            torch.cuda.empty_cache()
+
+            after_reserved = torch.cuda.memory_reserved() / 1024**3
+            after_allocated = torch.cuda.memory_allocated() / 1024**3
+
+            reserved_freed = before_reserved - after_reserved
+            allocated_freed = before_allocated - after_allocated
+
+            logger.info(
+                f"强制CUDA缓存清理 - "
+                f"已保留: {before_reserved:.2f}GB → {after_reserved:.2f}GB (释放{reserved_freed:.2f}GB), "
+                f"已分配: {before_allocated:.2f}GB → {after_allocated:.2f}GB (释放{allocated_freed:.2f}GB)"
+            )
+        else:
+            if verbose:
+                logger.info("CUDA不可用，跳过CUDA缓存清理")
+
+        # 2. 强制垃圾回收（多次执行）
+        for _ in range(3):
+            collected = gc.collect()
+            if collected > 0 and verbose:
+                logger.info(f"强制垃圾回收 - 回收了{collected}个对象")
+
+        # 3. 重置峰值显存统计
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+        logger.info("强制显存清理完成")
+
     def get_memory_info(self) -> dict:
         """
         获取当前显存信息

@@ -535,12 +535,15 @@ def test_model(model, dataloader, device, args):
             
             # 内存管理：定期清理或按需清理
             if memory_manager is not None:
-                # 每个batch后执行定期清理
-                memory_manager.step()
-                
-                # 检查是否需要按阈值清理
-                memory_manager.cleanup_if_needed()
-                
+                # batch_size=2时，每个batch后都强制清理以减少显存碎片化
+                if args.batch_size >= 2:
+                    memory_manager.force_cleanup(verbose=False)
+                else:
+                    # batch_size=1时，每5步清理一次
+                    memory_manager.step()
+                    # 检查是否需要按阈值清理
+                    memory_manager.cleanup_if_needed()
+
                 # 显存监控（每5个batch）
                 if (batch_idx + 1) % 5 == 0:
                     memory_info = memory_manager.get_memory_info()
