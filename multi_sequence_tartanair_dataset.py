@@ -281,6 +281,54 @@ class MultiSequenceTartanAirDataset(Dataset):
             'center_pose': center_pose
         }
     
+
+    @staticmethod
+    def collate_fn(batch):
+        """
+        自定义collate_fn，移除Dataset添加的额外维度1
+
+        Args:
+            batch: list of samples from dataset
+
+        Returns:
+            batched data with shape (batch, n_view, 3, H, W)
+        """
+        # 提取所有字段
+        keys = batch[0].keys()
+
+        result = {}
+
+        # 对于字符串字段，直接列表
+        for key in ['sequence_name']:
+            result[key] = [item[key] for item in batch]
+
+        # 对于标量字段，转为tensor
+        for key in ['segment_idx', 'start_frame', 'end_frame']:
+            result[key] = torch.tensor([item[key] for item in batch])
+
+        # 对于tensor字段，stack并移除额外维度
+        for key in ['rgb_images', 'poses', 'intrinsics']:
+            # stack所有样本
+            stacked = torch.stack([item[key] for item in batch], dim=0)  # (batch, 1, n_view, 3, H, W)
+            # 移除Dataset添加的维度1（第1维）
+            stacked = stacked.squeeze(1)  # (batch, n_view, 3, H, W)
+            result[key] = stacked
+
+        # 对于tsdf, occupancy，移除Dataset添加的维度1，保留一个维度1
+        for key in ['tsdf', 'occupancy']:
+            # stack所有样本
+            stacked = torch.stack([item[key] for item in batch], dim=0)  # (batch, 1, 1, D, H, W)
+            # 移除Dataset添加的维度1（第1维），保留原有的维度1（第2维）
+            stacked = stacked.squeeze(1)  # (batch, 1, D, H, W)
+            result[key] = stacked
+
+        # 对于其他字段，保持原样
+        for key in ['voxel_coords']:
+            result[key] = [item[key] for item in batch]
+
+        return result
+
+
     def __len__(self) -> int:
         """返回总片段数"""
         return len(self.segments)
@@ -306,21 +354,25 @@ class MultiSequenceTartanAirDataset(Dataset):
         # 转换为PyTorch张量并调整维度顺序
         rgb_images = torch.from_numpy(rgb_images).float() / 255.0  # 归一化到[0,1]
         rgb_images = rgb_images.permute(0, 3, 1, 2)  # (n_view, 3, H, W)
+        rgb_images = rgb_images.unsqueeze(0)  # (1, n_view, 3, H, W) ← 添加维度
         
         poses = torch.from_numpy(poses).float()
-        tsdf = torch.from_numpy(tsdf_data['tsdf']).float().unsqueeze(0)  # (1, D, H, W)
-        occupancy = torch.from_numpy(tsdf_data['occupancy']).float().unsqueeze(0)  # (1, D, H, W)
+        poses = poses.unsqueeze(0)  # (1, n_view, 4, 4) ← 添加维度
+
+        tsdf = torch.from_numpy(tsdf_data['tsdf']).float().unsqueeze(0).unsqueeze(0)  # (1, 1, D, H, W) ← 添加维度
+        occupancy = torch.from_numpy(tsdf_data['occupancy']).float().unsqueeze(0).unsqueeze(0)  # (1, 1, D, H, W) ← 添加维度
         voxel_coords = torch.from_numpy(tsdf_data['voxel_coords']).float()
         
         # 内参
         intrinsics = torch.from_numpy(self.K).float()
+        intrinsics = intrinsics.unsqueeze(0)  # (1, 3, 3) ← 添加维度
         
         return {
-            'rgb_images': rgb_images,      # (n_view, 3, H, W)
-            'poses': poses,                # (n_view, 4, 4)
-            'intrinsics': intrinsics,      # (3, 3)
-            'tsdf': tsdf,                  # (1, D, H, W)
-            'occupancy': occupancy,        # (1, D, H, W)
+            'rgb_images': rgb_images,      # (1, n_view, 3, H, W)
+            'poses': poses,                # (1, n_view, 4, 4)
+            'intrinsics': intrinsics,      # (1, 3, 3)
+            'tsdf': tsdf,                  # (1, 1, D, H, W)
+            'occupancy': occupancy,        # (1, 1, D, H, W)
             'voxel_coords': voxel_coords,  # (D, H, W, 3)
             'sequence_name': seq_info['name'],
             'segment_idx': idx,
