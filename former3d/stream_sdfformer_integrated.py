@@ -131,6 +131,11 @@ class StreamSDFFormerIntegrated(SDFFormer):
         batch_size = images.shape[0]
         device = images.device
         
+        # 确保所有张量都在正确的设备上
+        images = images.to(device)
+        poses = poses.to(device)
+        intrinsics = intrinsics.to(device)
+        
         # 原始SDFFormer期望多视图输入，这里将单视图扩展为多视图
         n_views = 1  # 流式推理使用单视图
         
@@ -158,17 +163,22 @@ class StreamSDFFormerIntegrated(SDFFormer):
             else:
                 raise ValueError(f"不支持的poses形状: {poses.shape}")
             
-            # 添加内参
-            # 注意：这里简化处理，实际需要根据分辨率调整
+            # 确保投影矩阵在正确的设备上
+            proj_mat = proj_mat.to(device)
             proj_mats[resname] = proj_mat
         
         # 设置原点（如果未提供）
         if origin is None:
             origin = torch.zeros(batch_size, 3, device=device)
+        else:
+            origin = origin.to(device)
+        
+        # 确保cam_positions在正确的设备上
+        cam_positions = cam_positions.to(device)
         
         # 构建batch字典
         batch = {
-            "rgb_imgs": rgb_imgs,
+            "rgb_imgs": rgb_imgs.to(device),
             "proj_mats": proj_mats,
             "cam_positions": cam_positions,
             "origin": origin
