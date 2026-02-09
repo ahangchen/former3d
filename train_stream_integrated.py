@@ -378,7 +378,7 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
             
             # 更新状态
             if state_manager is not None and new_state is not None:
-                state_manager.update(new_state, sequence_id, frame_idx)
+                state_manager.update_state(new_state, sequence_id, frame_idx, reset_state=False)
             
             # 每处理完一个序列进行梯度更新
             if (frame_idx + 1) == sequence_length:
