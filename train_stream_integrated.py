@@ -321,7 +321,7 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
     
     # 创建状态管理器
     if STREAM_STATE_MANAGER_AVAILABLE:
-        state_manager = StreamStateManager()
+        state_manager = StreamStateManager(device=device, max_cached_states=5)
     else:
         state_manager = None
     
