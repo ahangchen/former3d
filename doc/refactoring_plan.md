@@ -3,11 +3,24 @@
 ## 📋 概述
 
 本计划旨在修复代码中的三个核心问题：
-1. MultiSequenceTartanAirDataset的数据shape问题
-2. StreamSDFFormerIntegrated的历史特征创建逻辑错误
-3. 训练循环的低效batch处理
+1. **MultiSequenceTartanAirDataset的数据shape问题** - 添加维度支持PyTorch自动组batch
+2. **StreamSDFFormerIntegrated的历史特征创建逻辑错误** - 使用grid_sample正确搬运历史特征
+3. **训练循环的低效batch处理** - 移除batch_idx和frame_idx遍历，实现并行处理
 
 **原则**：不新增任何模型、数据集或训练循环代码，直接在现有代码上修改。
+
+**数据流设计**：
+```
+Dataset.__getitem__ → (1, n_view, 3, h, w)  ← 添加维度
+                    ↓ DataLoader组batch
+训练循环输入 → (batch, n_view, 3, h, w)
+                    ↓ forward_sequence (batch并行)
+                    ↓ 遍历n_view（frame_idx循环在模型内部）
+forward_single_frame → (batch, 1, 3, h, w)
+                    ↓ 去掉序列维度
+                    ↓ 所有子模块并行处理batch (2D编码器、3D编码器、注意力等)
+输出 → (batch, 1, ...)
+```
 
 ---
 
@@ -38,6 +51,15 @@
 - `n_view`：序列片段长度
 - `batch`：PyTorch自动添加的批次维度
 - 所有张量都需要在最前面添加一个维度`1`
+
+**数据流**：
+```
+Dataset.__getitem__ → (1, n_view, 3, h, w)
+                    ↓ DataLoader组batch
+训练循环输入 → (batch, n_view, 3, h, w)
+                    ↓ forward_sequence
+forward_single_frame → (batch, 1, 3, h, w)
+```
 
 ### 修复步骤
 
@@ -91,7 +113,196 @@ def __getitem__(self, idx):
 - PyTorch的默认`collate_fn`会自动在第0维度进行stack
 - 从`(1, ...)`变为`(batch, ...)`
 
-#### 步骤1.3：验证DataLoader输出
+#### 步骤1.3：修改训练循环（train_epoch_stream）
+
+**文件**：`former3d/train_stream_integrated.py`
+
+**当前问题**：
+
+```python
+# 当前的低效实现
+def train_epoch_stream(self, dataloader, epoch):
+    for batch_idx, batch in enumerate(dataloader):
+        # 遍历batch中的每个样本
+        for i in range(batch['images'].shape[0]):
+            # 手动处理每个样本
+            image = batch['images'][i]  # (n_view, 3, h, w) - 错误的shape
+            pose = batch['poses'][i]    # (n_view, 4, 4) - 错误的shape
+            # ... 手动调用模型 ...
+```
+
+**修复后的实现**：
+
+```python
+# 修复后的高效实现
+def train_epoch_stream(self, dataloader, epoch):
+    self.model.train()
+
+    for batch_idx, batch in enumerate(dataloader):
+        # batch的shape已经是 (batch, n_view, 3, h, w)
+        # 直接将整个batch喂给模型
+        images = batch['images']  # (batch, n_view, 3, h, w)
+        poses = batch['poses']    # (batch, n_view, 4, 4)
+        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3)
+
+        # 调用模型的forward_sequence，内部处理序列
+        # 注意：这里不应该有frame_idx的循环，应该由模型内部处理
+        outputs, states = self.model.forward_sequence(
+            images, poses, intrinsics
+        )  # 输出已经包含了batch维度
+
+        # 计算损失（batch维度已经正确）
+        loss = self.compute_loss(outputs, batch)
+
+        # 反向传播
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        # 记录统计信息
+        self.train_stats['loss'] += loss.item()
+        self.train_stats['num_batches'] += 1
+
+        if batch_idx % self.log_interval == 0:
+            self.log_stats(batch_idx, epoch)
+```
+
+**关键修改点**：
+1. ❌ 移除batch_idx的循环遍历
+2. ❌ 移除frame_idx的循环遍历（frame_idx应该放在模型的forward_sequence中）
+3. ✅ 直接将整个batch喂给模型的forward_sequence
+4. ✅ 一次性计算整个batch的损失
+
+#### 步骤1.4：确保模型的forward_sequence正确处理新shape
+
+**文件**：`former3d/stream_sdfformer_integrated.py`
+
+**当前问题**：
+
+```python
+# 当前的实现可能没有正确处理batch和n_view
+def forward_sequence(self, images, poses, intrinsics):
+    # images: (batch, n_view, 3, h, w) - 修复后的shape
+    # 可能错误：只处理第一个样本或第一个视图
+    image = images[0, 0]  # 错误！
+```
+
+**修复后的实现**：
+
+```python
+# 修复后的实现
+def forward_sequence(self, images, poses, intrinsics):
+    """
+    流式处理序列数据（支持batch）
+
+    Args:
+        images: (batch, n_view, 3, h, w)
+        poses: (batch, n_view, 4, 4)
+        intrinsics: (batch, n_view, 3, 3)
+
+    Returns:
+        outputs: (batch, n_view, ...)
+        states: 状态列表，每个元素对应一帧
+    """
+    batch_size, n_view, C, H, W = images.shape
+
+    outputs = []
+    states = []
+
+    # 重置状态
+    self.reset_state()
+
+    # 遍历序列中的每一帧（frame_idx循环放在这里！）
+    for t in range(n_view):
+        # 提取第t帧的数据（保留batch维度）
+        images_t = images[:, t:t+1]  # (batch, 1, 3, h, w)
+        poses_t = poses[:, t:t+1]    # (batch, 1, 4, 4)
+        intrinsics_t = intrinsics[:, t:t+1]  # (batch, 1, 3, 3)
+
+        # 调用forward_single_frame，处理batch维度
+        output_t, state_t = self.forward_single_frame(
+            images_t, poses_t, intrinsics_t,
+            reset_state=(t == 0)
+        )  # output_t的shape是 (batch, 1, ...)
+
+        outputs.append(output_t)
+        states.append(state_t)
+
+    # 堆叠输出
+    outputs = torch.cat(outputs, dim=1)  # (batch, n_view, ...)
+
+    return outputs, states
+```
+
+**关键修改点**：
+1. ✅ 正确处理输入shape：(batch, n_view, 3, h, w)
+2. ✅ frame_idx循环在模型内部，不在训练循环中
+3. ✅ 保留batch维度，并行处理batch中的所有样本
+4. ✅ 对每个样本的每一帧进行流式处理
+
+#### 步骤1.5：确保模型的forward_single_frame正确处理新shape
+
+**文件**：`former3d/stream_sdfformer_integrated.py`
+
+**当前问题**：
+
+```python
+# 当前的实现可能没有正确处理batch
+def forward_single_frame(self, images, poses, intrinsics, reset_state=False):
+    # images: (batch, 1, 3, h, w) - 修复后的shape
+    # 可能错误：只处理第一个样本
+    image = images[0, 0]  # 错误！
+```
+
+**修复后的实现**：
+
+```python
+# 修复后的实现
+def forward_single_frame(self, images, poses, intrinsics, reset_state=False):
+    """
+    处理单帧数据（支持batch）
+
+    Args:
+        images: (batch, 1, 3, h, w)
+        poses: (batch, 1, 4, 4)
+        intrinsics: (batch, 1, 3, 3)
+        reset_state: 是否重置状态
+
+    Returns:
+        output: (batch, 1, ...)
+        state: 状态字典
+    """
+    batch_size = images.shape[0]
+
+    # 去掉序列维度（因为只有1帧）
+    images = images.squeeze(1)  # (batch, 3, h, w)
+    poses = poses.squeeze(1)    # (batch, 4, 4)
+    intrinsics = intrinsics.squeeze(1)  # (batch, 3, 3)
+
+    # 2D特征提取（支持batch）
+    features_2d = self.extract_features(images)  # (batch, C2D, h2d, w2d)
+
+    # 3D体素生成（支持batch）
+    voxel_data = self.generate_voxels(features_2d, poses, intrinsics)  # (batch, N_voxel, ...)
+
+    # 3D编码器（支持batch）
+    features_3d = self.net3d(voxel_data)  # (batch, N_voxel, C3D)
+
+    # ... 后面的逻辑都需要支持batch ...
+
+    # 恢复序列维度
+    output = output.unsqueeze(1)  # (batch, 1, ...)
+
+    return output, state
+```
+
+**关键修改点**：
+1. ✅ 正确处理输入shape：(batch, 1, 3, h, w)
+2. ✅ 去掉序列维度后处理：(batch, 3, h, w)
+3. ✅ 所有子模块（2D编码器、3D编码器等）都需要支持batch
+4. ✅ 恢复序列维度后输出：(batch, 1, ...)
+
+#### 步骤1.6：验证DataLoader输出
 
 **测试代码**（新建测试脚本）：
 
@@ -108,6 +319,36 @@ for batch in dataloader:
     print("Poses shape:", batch['poses'].shape)    # 应该是 (batch, n_view, 4, 4)
     print("Intrinsics shape:", batch['intrinsics'].shape)  # 应该是 (batch, n_view, 3, 3)
     break
+```
+
+#### 步骤1.7：验证模型对新shape的支持
+
+**测试代码**（扩展测试脚本）：
+
+```python
+# test/test_model_batch_support.py
+import torch
+from former3d.stream_sdfformer_integrated import StreamSDFFormerIntegrated
+
+# 创建模型
+model = StreamSDFFormerIntegrated(...).to('cuda')
+model.eval()
+
+# 模拟一个batch的数据
+batch_size = 4
+n_view = 5
+images = torch.randn(batch_size, n_view, 3, 256, 256).to('cuda')
+poses = torch.eye(4).unsqueeze(0).unsqueeze(0).expand(batch_size, n_view, 4, 4).to('cuda')
+intrinsics = torch.eye(3).unsqueeze(0).unsqueeze(0).expand(batch_size, n_view, 3, 3).to('cuda')
+
+# 调用forward_sequence
+outputs, states = model.forward_sequence(images, poses, intrinsics)
+
+# 验证输出shape
+assert outputs.shape[0] == batch_size  # batch维度正确
+assert outputs.shape[1] == n_view      # n_view维度正确
+
+print("测试通过！模型正确处理batch和n_view维度")
 ```
 
 ---
@@ -346,228 +587,231 @@ assert state_t2['features'] is not None
 
 ## 🔴 问题3：训练循环的低效batch处理
 
+**注意**：问题3的主要部分已经在问题1中修复（步骤1.3）。本节主要关注模型内部的batch并行优化。
+
 ### 问题描述
 
-当前训练循环遍历batch_idx，导致batch维度无法并行处理，效率极低。
+除了训练循环中的batch_idx遍历，模型内部可能也存在低效的batch处理：
+
+1. **3D体素生成**：可能逐个处理batch中的样本
+2. **3D编码器**：可能逐个处理batch中的样本
+3. **注意力计算**：可能逐个计算注意力
 
 ### 修复目标
 
-移除训练循环中的batch_idx遍历，让模型的forward_sequence和forward_single_frame并行处理batch维度。
+确保模型内部的所有操作都正确支持batch并行，避免任何batch维度的展开。
 
 ### 修复步骤
 
-#### 步骤3.1：修改train_epoch_stream函数
-
-**文件**：`former3d/train_stream_integrated.py`
-
-**当前问题**：
-
-```python
-# 当前的低效实现
-for batch_idx, batch in enumerate(dataloader):
-    # 遍历batch中的每个样本
-    for i in range(batch['images'].shape[0]):
-        # 手动处理每个样本
-        image = batch['images'][i]  # (n_view, 3, h, w)
-        pose = batch['poses'][i]    # (n_view, 4, 4)
-        # ...
-```
-
-**修复后的实现**：
-
-```python
-# 修复后的高效实现
-for batch_idx, batch in enumerate(dataloader):
-    # batch的shape已经是 (batch, n_view, 3, h, w)
-    # 直接将整个batch喂给模型
-    images = batch['images']  # (batch, n_view, 3, h, w)
-    poses = batch['poses']    # (batch, n_view, 4, 4)
-    intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3)
-
-    # 调用模型的forward_sequence，内部处理序列
-    outputs, states = model.forward_sequence(
-        images, poses, intrinsics
-    )  # 输出已经包含了batch维度
-
-    # 计算损失（batch维度已经正确）
-    loss = compute_loss(outputs, batch['targets'])
-
-    # 反向传播
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
-```
-
-#### 步骤3.2：确保forward_sequence正确处理batch维度
+#### 步骤3.1：确保3D体素生成支持batch
 
 **文件**：`former3d/stream_sdfformer_integrated.py`
 
 **当前问题**：
 
 ```python
-# 当前的实现可能没有正确处理batch
-def forward_sequence(self, images, poses, intrinsics):
-    # images: (batch, n_view, 3, h, w)
-    # 可能错误：只处理第一个样本
-    image = images[0]  # 错误！
+# 当前的实现可能逐个处理batch
+def generate_voxels(self, features_2d, poses, intrinsics):
+    # features_2d: (batch, C2D, h2d, w2d)
+    # poses: (batch, 4, 4)
+    # intrinsics: (batch, 3, 3)
+    # 可能错误：遍历batch
+    for i in range(features_2d.shape[0]):
+        voxel_data_i = self._generate_voxels_single(
+            features_2d[i], poses[i], intrinsics[i]
+        )
+        voxel_data_list.append(voxel_data_i)
 ```
 
 **修复后的实现**：
 
 ```python
 # 修复后的实现
-def forward_sequence(self, images, poses, intrinsics):
+def generate_voxels(self, features_2d, poses, intrinsics):
     """
-    流式处理序列数据
+    生成3D体素数据（支持batch）
 
     Args:
-        images: (batch, n_view, 3, h, w)
-        poses: (batch, n_view, 4, 4)
-        intrinsics: (batch, n_view, 3, 3)
+        features_2d: (batch, C2D, h2d, w2d)
+        poses: (batch, 4, 4)
+        intrinsics: (batch, 3, 3)
 
     Returns:
-        outputs: (batch, n_view, ...)
-        states: 状态列表，每个元素对应一帧
+        voxel_data: (batch, N_voxel, ...)
     """
-    batch_size, n_view, C, H, W = images.shape
+    batch_size = features_2d.shape[0]
 
-    outputs = []
-    states = []
+    # 并行处理整个batch
+    # 将batch维度和空间维度合并，然后一起投影到3D空间
+    # 具体实现取决于当前的投影逻辑
 
-    # 重置状态
-    self.reset_state()
+    # 例如：
+    # 1. 将features_2dreshape为 (batch * h2d * w2d, C2D)
+    # 2. 计算所有像素的3D坐标
+    # 3. 批量投影到体素网格
+    # 4. 将结果reshape回 (batch, N_voxel, ...)
 
-    # 遍历序列中的每一帧
-    for t in range(n_view):
-        # 提取第t帧的数据（保留batch维度）
-        images_t = images[:, t:t+1]  # (batch, 1, 3, h, w)
-        poses_t = poses[:, t:t+1]    # (batch, 1, 4, 4)
-        intrinsics_t = intrinsics[:, t:t+1]  # (batch, 1, 3, 3)
+    voxel_data = self._generate_voxels_batch(
+        features_2d, poses, intrinsics
+    )  # (batch, N_voxel, ...)
 
-        # 调用forward_single_frame，处理batch维度
-        output_t, state_t = self.forward_single_frame(
-            images_t, poses_t, intrinsics_t,
-            reset_state=(t == 0)
-        )  # output_t的shape是 (batch, 1, ...)
-
-        outputs.append(output_t)
-        states.append(state_t)
-
-    # 堆叠输出
-    outputs = torch.cat(outputs, dim=1)  # (batch, n_view, ...)
-
-    return outputs, states
+    return voxel_data
 ```
 
-#### 步骤3.3：确保forward_single_frame正确处理batch维度
+#### 步骤3.2：确保3D编码器支持batch
 
 **文件**：`former3d/stream_sdfformer_integrated.py`
 
 **当前问题**：
 
 ```python
-# 当前的实现可能没有正确处理batch
-def forward_single_frame(self, images, poses, intrinsics, reset_state=False):
-    # images: (batch, 1, 3, h, w)
-    # 可能错误：只处理第一个样本
-    image = images[0, 0]  # 错误！
+# 当前的实现可能逐个处理batch
+def forward(self, voxel_data):
+    # voxel_data: (batch, N_voxel, ...)
+    # 可能错误：遍历batch
+    for i in range(voxel_data.shape[0]):
+        features_3d_i = self.net3d(voxel_data[i])
+        features_3d_list.append(features_3d_i)
 ```
 
 **修复后的实现**：
 
 ```python
 # 修复后的实现
-def forward_single_frame(self, images, poses, intrinsics, reset_state=False):
+def forward(self, voxel_data):
     """
-    处理单帧数据（支持batch）
+    3D编码器前向传播（支持batch）
 
     Args:
-        images: (batch, 1, 3, h, w)
-        poses: (batch, 1, 4, 4)
-        intrinsics: (batch, 1, 3, 3)
-        reset_state: 是否重置状态
+        voxel_data: (batch, N_voxel, ...)
 
     Returns:
-        output: (batch, 1, ...)
-        state: 状态字典
+        features_3d: (batch, N_voxel, C3D)
     """
-    batch_size = images.shape[0]
+    # 3D编码器应该已经支持batch（因为spconv支持batch）
+    # 只需要确保输入shape正确
 
-    # 去掉序列维度（因为只有1帧）
-    images = images.squeeze(1)  # (batch, 3, h, w)
-    poses = poses.squeeze(1)    # (batch, 4, 4)
-    intrinsics = intrinsics.squeeze(1)  # (batch, 3, 3)
-
-    # 2D特征提取（支持batch）
-    features_2d = self.extract_features(images)  # (batch, C2D, h2d, w2d)
-
-    # 3D体素生成（支持batch）
-    voxel_data = self.generate_voxels(features_2d, poses, intrinsics)  # (batch, N_voxel, ...)
-
-    # 3D编码器（支持batch）
     features_3d = self.net3d(voxel_data)  # (batch, N_voxel, C3D)
 
-    # ... 后面的逻辑都需要支持batch ...
-
-    # 恢复序列维度
-    output = output.unsqueeze(1)  # (batch, 1, ...)
-
-    return output, state
+    return features_3d
 ```
 
-#### 步骤3.4：测试训练循环
+#### 步骤3.3：确保注意力计算支持batch
+
+**文件**：`former3d/stream_sdfformer_integrated.py`
+
+**当前问题**：
+
+```python
+# 当前的实现可能逐个计算注意力
+def attention(self, query, key, value):
+    # query, key, value: (batch, N, C)
+    # 可能错误：遍历batch
+    for i in range(query.shape[0]):
+        attn_i = self._attention_single(
+            query[i], key[i], value[i]
+        )
+        attn_list.append(attn_i)
+```
+
+**修复后的实现**：
+
+```python
+# 修复后的实现
+def attention(self, query, key, value):
+    """
+    注意力计算（支持batch）
+
+    Args:
+        query: (batch, N_query, C)
+        key: (batch, N_key, C)
+        value: (batch, N_value, C)
+
+    Returns:
+        output: (batch, N_query, C)
+    """
+    # PyTorch的注意力机制已经支持batch
+    # 只需要确保输入shape正确
+
+    # 计算注意力分数
+    scores = torch.matmul(query, key.transpose(-2, -1))  # (batch, N_query, N_key)
+
+    # 缩放
+    scores = scores / (query.shape[-1] ** 0.5)
+
+    # Softmax
+    attn_weights = F.softmax(scores, dim=-1)  # (batch, N_query, N_key)
+
+    # 加权求和
+    output = torch.matmul(attn_weights, value)  # (batch, N_query, C)
+
+    return output
+```
+
+#### 步骤3.4：测试模型batch并行性能
 
 **测试代码**（新建测试脚本）：
 
 ```python
-# test/test_training_batch.py
-from torch.utils.data import DataLoader
-from former3d.dataset.multi_sequence_tartanair import MultiSequenceTartanAirDataset
+# test/test_batch_performance.py
+import torch
+import time
 from former3d.stream_sdfformer_integrated import StreamSDFFormerIntegrated
-
-# 创建数据集和DataLoader
-dataset = MultiSequenceTartanAirDataset(...)
-dataloader = DataLoader(dataset, batch_size=4, shuffle=False)
 
 # 创建模型
 model = StreamSDFFormerIntegrated(...).to('cuda')
 
-# 测试一个batch
-for batch in dataloader:
-    images = batch['images']  # (batch, n_view, 3, h, w)
-    poses = batch['poses']    # (batch, n_view, 4, 4)
-    intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3)
+# 测试不同batch size的性能
+batch_sizes = [1, 2, 4, 8]
+n_view = 5
 
-    # 调用forward_sequence
-    outputs, states = model.forward_sequence(images, poses, intrinsics)
+for batch_size in batch_sizes:
+    # 创建数据
+    images = torch.randn(batch_size, n_view, 3, 256, 256).to('cuda')
+    poses = torch.eye(4).unsqueeze(0).unsqueeze(0).expand(batch_size, n_view, 4, 4).to('cuda')
+    intrinsics = torch.eye(3).unsqueeze(0).unsqueeze(0).expand(batch_size, n_view, 3, 3).to('cuda')
 
-    # 验证输出shape
-    assert outputs.shape[0] == batch.shape[0]  # batch维度正确
-    assert outputs.shape[1] == batch.shape[1]  # n_view维度正确
+    # 预热
+    model.forward_sequence(images, poses, intrinsics)
+    torch.cuda.synchronize()
 
-    print("测试通过！")
-    break
+    # 计时
+    start_time = time.time()
+    for _ in range(10):
+        outputs, states = model.forward_sequence(images, poses, intrinsics)
+    torch.cuda.synchronize()
+    elapsed_time = time.time() - start_time
+
+    print(f"Batch size {batch_size}: {elapsed_time / 10:.4f} sec per forward")
 ```
 
 ---
 
 ## 📅 实施计划
 
-### 阶段1：数据shape修复（问题1）
+### 阶段1：数据shape修复和训练循环适配（问题1）
 
-**预计时间**：1-2小时
+**预计时间**：3-4小时
 
 **任务清单**：
-- [ ] 1.1 修改MultiSequenceTartanAirDataset的__getitem__
+- [ ] 1.1 修改MultiSequenceTartanAirDataset的__getitem__，添加维度
 - [ ] 1.2 修改collate_fn（如果有）
-- [ ] 1.3 验证DataLoader输出shape正确
-- [ ] 1.4 编写测试脚本test/test_dataset_shape.py
+- [ ] 1.3 **修改训练循环train_epoch_stream，移除batch_idx和frame_idx循环**
+- [ ] 1.4 **确保模型的forward_sequence正确处理新shape**
+- [ ] 1.5 **确保模型的forward_single_frame正确处理新shape**
+- [ ] 1.6 验证DataLoader输出shape正确
+- [ ] 1.7 验证模型对新shape的支持
+- [ ] 1.8 编写测试脚本test/test_dataset_shape.py
+- [ ] 1.9 编写测试脚本test/test_model_batch_support.py
 
 **验证标准**：
-- DataLoader输出的shape正确：
+- DataLoader输出shape正确：
   - images: (batch, n_view, 3, h, w)
   - poses: (batch, n_view, 4, 4)
   - intrinsics: (batch, n_view, 3, 3)
+- 训练循环不再遍历batch_idx和frame_idx
+- forward_sequence正确处理 (batch, n_view, 3, h, w)
+- forward_single_frame正确处理 (batch, 1, 3, h, w)
 
 ### 阶段2：历史特征创建逻辑修复（问题2）
 
@@ -584,20 +828,23 @@ for batch in dataloader:
 - 历史特征不是随机的
 - 历史特征与前一帧的输出相关
 - 特征搬运的逻辑正确（使用grid_sample）
+- 历史特征是multi scale feature，不是occ或tsdf
 
-### 阶段3：训练循环batch并行修复（问题3）
+### 阶段3：模型内部batch并行优化（问题3）
 
 **预计时间**：2-3小时
 
 **任务清单**：
-- [ ] 3.1 修改train_epoch_stream函数
-- [ ] 3.2 确保forward_sequence正确处理batch维度
-- [ ] 3.3 确保forward_single_frame正确处理batch维度
-- [ ] 3.4 编写测试脚本test/test_training_batch.py
+- [ ] 3.1 确保3D体素生成支持batch
+- [ ] 3.2 确保3D编码器支持batch
+- [ ] 3.3 确保注意力计算支持batch
+- [ ] 3.4 测试模型batch并行性能
+- [ ] 3.5 编写测试脚本test/test_batch_performance.py
 
 **验证标准**：
-- 训练循环不再遍历batch_idx
-- forward_sequence和forward_single_frame正确处理batch维度
+- 3D体素生成不再遍历batch_idx
+- 3D编码器不再遍历batch_idx
+- 注意力计算不再遍历batch_idx
 - 训练速度提升（预期2-3倍）
 
 ### 阶段4：集成测试
@@ -608,13 +855,15 @@ for batch in dataloader:
 - [ ] 4.1 运行完整的训练脚本
 - [ ] 4.2 验证训练收敛
 - [ ] 4.3 验证显存使用合理
-- [ ] 4.4 编写集成测试脚本
+- [ ] 4.4 验证训练速度提升
+- [ ] 4.5 编写集成测试脚本
 
 **验证标准**：
 - 训练可以正常进行
 - 损失正常下降
 - 显存使用符合预期
 - 无OOM错误
+- 训练速度提升2-3倍
 
 ---
 
@@ -658,16 +907,31 @@ for batch in dataloader:
 1. **数据shape正确**：
    - DataLoader输出shape符合PyTorch规范
    - 可以正确组batch
+   - Dataset返回 (1, n_view, 3, h, w)，组batch后为 (batch, n_view, 3, h, w)
 
-2. **历史特征正确**：
+2. **训练循环高效**：
+   - 不再遍历batch_idx
+   - 不再遍历frame_idx（frame_idx循环放在模型内部）
+   - 直接将整个batch喂给模型
+   - 一次性计算整个batch的损失
+
+3. **模型支持batch**：
+   - forward_sequence正确处理 (batch, n_view, 3, h, w)
+   - forward_single_frame正确处理 (batch, 1, 3, h, w)
+   - 3D体素生成支持batch并行
+   - 3D编码器支持batch并行
+   - 注意力计算支持batch并行
+
+4. **历史特征正确**：
    - 使用正确的特征搬运逻辑
    - 使用grid_sample进行特征对齐
    - 历史特征不是随机的
+   - 历史特征是multi scale feature，不是occ或tsdf
 
-3. **训练高效**：
-   - 不再遍历batch_idx
-   - batch维度正确并行处理
+5. **性能提升**：
    - 训练速度提升2-3倍
+   - 显存使用合理
+   - 无OOM错误
 
 ---
 
@@ -675,16 +939,19 @@ for batch in dataloader:
 
 **需要修改的文件**：
 1. `former3d/dataset/multi_sequence_tartanair.py` - 数据shape
-2. `former3d/stream_sdfformer_integrated.py` - 历史特征创建逻辑
+2. `former3d/stream_sdfformer_integrated.py` - 历史特征创建逻辑 + 模型batch并行
 3. `former3d/train_stream_integrated.py` - 训练循环batch处理
 
 **需要新建的测试文件**：
 1. `test/test_dataset_shape.py` - 数据shape测试
-2. `test/test_feature_warping.py` - 特征搬运测试
-3. `test/test_training_batch.py` - 训练batch处理测试
+2. `test/test_model_batch_support.py` - 模型对batch的支持测试
+3. `test/test_feature_warping.py` - 特征搬运测试
+4. `test/test_batch_performance.py` - batch并行性能测试
+5. `test/test_integration.py` - 集成测试
 
 ---
 
 **计划制定时间**：2026-02-10 01:00
+**计划更新时间**：2026-02-10 01:10
 **预计开始实施**：等待用户审核后开始
-**预计完成时间**：审核通过后7-9小时
+**预计完成时间**：审核通过后9-13小时
