@@ -59,27 +59,44 @@
 
 ---
 
-## ⚠️ 阶段3：注意力计算优化（未完成）
+## ⚠️ 阶段3：注意力计算优化（部分完成）
 
 ### 3.1 使用checkpointing减少显存
-**状态**：❌ 未开始
+**状态**：✅ 已实现并测试
 **预计工作量**：2小时
 **风险**：中（可能影响精度）
 
-**待实现**：
-- [ ] 在 `StreamCrossAttention` 模块中使用 `torch.utils.checkpoint`
-- [ ] 包装注意力计算，减少中间变量存储
-- [ ] 测试checkpointing正确性（数值精度对比）
+**实现**：
+- ✅ 在 `LocalCrossAttention` 中添加 `use_checkpoint` 参数
+- ✅ 实现 `_compute_attention()` 方法用于checkpointing
+- ✅ 更新 `StreamCrossAttention` 支持 `use_checkpoint`
+- ✅ 更新 `StreamSDFFormerIntegrated` 传递 `use_checkpoint` 参数
+
+**测试**：✅ 已验证
+- ✅ `test/test_checkpointing_precision.py`：数值精度完全正确（差异为0）
+- ⚠️  `test/test_checkpointing_memory.py`：当前模型规模下无显著收益
+
+**分析**：
+- Checkpointing数值精度完全正确，可以安全使用
+- 对于当前模型规模（N=2000, 10000），checkpointing未降低显存
+- 原因：计算规模较小，checkpointing开销大于收益
+- 建议：只在更大规模或更深网络中使用checkpointing
 
 ### 3.2 实现分块注意力计算
-**状态**：❌ 未开始
+**状态**：❌ 未开始（优先级降低）
 **预计工作量**：1小时
 **风险**：低
 
-**待实现**：
-- [ ] 实现 `chunked_attention()` 方法
-- [ ] 分块处理当前特征和历史特征
-- [ ] 测试性能和显存占用对比
+**原因**：
+- Checkpointing在当前模型规模下未显示出优势
+- 分块注意力主要用于超大注意力矩阵（N>50000）
+- 当前模型的体素数量（N=2000, 10000）不需要分块
+- **决定**：推迟实施，等待更大规模模型需求
+
+**未来实施条件**：
+- 单个注意力序列超过50000体素
+- 显存超过6GB
+- 检测到CUDA OOM错误
 
 ---
 
