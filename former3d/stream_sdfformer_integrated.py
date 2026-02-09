@@ -8,6 +8,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple, Any
 import collections
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 导入原始SDFFormer组件
 from former3d.sdfformer import SDFFormer
@@ -65,11 +68,14 @@ class StreamSDFFormerIntegrated(SDFFormer):
             local_radius=fusion_local_radius
         )
         self.stream_fusion_enabled = True  # 启用流式融合
-        
+
         # 历史状态管理
         self.historical_state = None
         self.historical_pose = None
         self.historical_intrinsics = None
+
+        # 轻量级状态模式（防止内存泄漏）
+        self.lightweight_state_mode = True  # 默认启用轻量级模式
         
         # 流式特定的投影网络
         self.img_feat_projection = nn.Sequential(
@@ -504,6 +510,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 sdf = output.get('sdf', None)
                 occupancy = output.get('occupancy', None)
                 
+                # 基础状态信息（始终保存）
                 new_state = {
                     'features': features,
                     'sdf': sdf,
@@ -512,9 +519,15 @@ class StreamSDFFormerIntegrated(SDFFormer):
                     'batch_inds': batch_inds,
                     'num_voxels': features.shape[0],
                     'pose': current_pose.detach().clone(),
-                    'output': output,  # 保存完整输出以供参考
-                    'original_features': fine_output.features  # 保存原始特征
                 }
+
+                # 轻量级模式：只保存必要信息，不保存完整输出
+                # 默认启用轻量级模式以防止内存泄漏
+                if not self.lightweight_state_mode:
+                    # 非轻量级模式：保存完整输出以供调试（不推荐）
+                    new_state['output'] = output
+                    new_state['original_features'] = fine_output.features
+                    logger.warning("⚠️  非轻量级模式：保存完整输出可能导致内存泄漏")
                 
                 return new_state
         
@@ -549,7 +562,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
             'batch_inds': batch_inds,
             'num_voxels': total_voxels,
             'pose': current_pose.detach().clone(),
-            'output': output  # 保存完整输出以供参考
+            # 移除完整输出保存，防止内存泄漏
+            # 'output': output  # ❌ 删除：保存完整输出导致内存泄漏
         }
         
         return new_state
@@ -592,6 +606,26 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.historical_pose = None
         self.historical_intrinsics = None
         print("历史状态已清除")
+
+    def enable_lightweight_state(self, enabled: bool = True):
+        """启用或禁用轻量级状态模式
+
+        轻量级状态模式只保存必要的特征信息，避免保存完整输出，
+        从而防止内存泄漏并减少显存占用。
+
+        Args:
+            enabled: 是否启用轻量级状态模式
+        """
+        self.lightweight_state_mode = enabled
+
+        # 如果切换到轻量级模式，清理当前历史状态中的冗余数据
+        if enabled and self.historical_state is not None:
+            if 'output' in self.historical_state:
+                del self.historical_state['output']
+            if 'original_features' in self.historical_state:
+                del self.historical_state['original_features']
+
+        print(f"轻量级状态模式已{'启用' if enabled else '禁用'}")
     
     def reset_state(self):
         """重置状态（clear_history的别名）"""
