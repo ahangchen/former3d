@@ -298,16 +298,15 @@ class StreamSDFFormerIntegrated(SDFFormer):
         # 4. 调用原始SDFFormer的forward方法
         voxel_outputs, proj_occ_logits, bp_data = super().forward(batch, voxel_inds_16)
         
-        # 5. 如果有历史特征，执行流式融合（暂时禁用以避免内存问题）
+        # 5. 如果有历史特征，执行流式融合
         if historical_features is not None and self.stream_fusion_enabled:
-            print("⚠️ 流式融合已禁用（内存限制）")
-            # 暂时跳过流式融合以避免CUDA内存不足
-            # current_features = self._extract_current_features(voxel_outputs, bp_data)
-            # if current_features is not None:
-            #     fused_features = self._apply_stream_fusion(
-            #         current_features, historical_features, poses
-            #     )
-            #     voxel_outputs = self._update_voxel_outputs(voxel_outputs, fused_features)
+            # 执行流式融合
+            current_features = self._extract_current_features(voxel_outputs, bp_data)
+            if current_features is not None:
+                fused_features = self._apply_stream_fusion(
+                    current_features, historical_features, poses
+                )
+                voxel_outputs = self._update_voxel_outputs(voxel_outputs, fused_features)
         
         # 6. 构建输出字典
         output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
