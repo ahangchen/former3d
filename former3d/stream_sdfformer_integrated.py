@@ -30,15 +30,16 @@ class StreamSDFFormerIntegrated(SDFFormer):
     支持基于历史状态的单帧流式推理
     """
     
-    def __init__(self, 
-                 attn_heads: int, 
-                 attn_layers: int, 
-                 use_proj_occ: bool, 
+    def __init__(self,
+                 attn_heads: int,
+                 attn_layers: int,
+                 use_proj_occ: bool,
                  voxel_size: float = 0.04,
                  fusion_local_radius: float = 3.0,
-                 crop_size: Tuple[int, int, int] = (48, 96, 96)):
+                 crop_size: Tuple[int, int, int] = (48, 96, 96),
+                 use_checkpoint: bool = False):
         """初始化集成版本
-        
+
         Args:
             attn_heads: 注意力头数
             attn_layers: 注意力层数
@@ -46,26 +47,29 @@ class StreamSDFFormerIntegrated(SDFFormer):
             voxel_size: 体素大小
             fusion_local_radius: 流式融合局部半径
             crop_size: 裁剪空间大小 (depth, height, width)
+            use_checkpoint: 是否使用gradient checkpointing节省显存
         """
         # 初始化原始SDFFormer
         super().__init__(attn_heads, attn_layers, use_proj_occ, voxel_size)
-        
+
         # 保存额外参数
         self.fusion_local_radius = fusion_local_radius
         self.crop_size = crop_size
-        
+        self.use_checkpoint = use_checkpoint
+
         # 添加流式组件
         self.pose_projection = PoseProjection()
-        
+
         # 注意：原始SDFFormer输出特征维度为1，但流式融合需要更大维度
         # 这里我们使用线性层进行特征维度的扩展和压缩
         self.feature_expansion = nn.Linear(1, 128) if not use_proj_occ else nn.Identity()
         self.feature_compression = nn.Linear(128, 1) if not use_proj_occ else nn.Identity()
-        
+
         self.stream_fusion = StreamCrossAttention(
             feature_dim=128,  # 扩展后的特征维度
             num_heads=4,
-            local_radius=fusion_local_radius
+            local_radius=fusion_local_radius,
+            use_checkpoint=use_checkpoint
         )
         self.stream_fusion_enabled = True  # 启用流式融合
 

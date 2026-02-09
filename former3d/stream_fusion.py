@@ -8,129 +8,162 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Tuple, Optional
+from torch.utils.checkpoint import checkpoint
 
 
 class LocalCrossAttention(nn.Module):
     """局部Cross-Attention模块
-    
+
     只考虑空间邻近的历史体素，减少计算复杂度。
-    
+
     Args:
         feature_dim: 特征维度
         num_heads: 注意力头数
         local_radius: 局部注意力半径（体素单位）
         dropout: dropout概率
+        use_checkpoint: 是否使用gradient checkpointing来节省显存
     """
-    
-    def __init__(self, feature_dim: int, num_heads: int = 8, 
-                 local_radius: int = 3, dropout: float = 0.1):
+
+    def __init__(self, feature_dim: int, num_heads: int = 8,
+                 local_radius: int = 3, dropout: float = 0.1,
+                 use_checkpoint: bool = False):
         super().__init__()
         self.feature_dim = feature_dim
         self.num_heads = num_heads
         self.local_radius = local_radius
         self.head_dim = feature_dim // num_heads
-        
+        self.use_checkpoint = use_checkpoint
+
         assert feature_dim % num_heads == 0, "feature_dim必须能被num_heads整除"
-        
+
         # 线性变换层
         self.q_proj = nn.Linear(feature_dim, feature_dim)
         self.k_proj = nn.Linear(feature_dim, feature_dim)
         self.v_proj = nn.Linear(feature_dim, feature_dim)
         self.out_proj = nn.Linear(feature_dim, feature_dim)
-        
+
         # Dropout
         self.dropout = nn.Dropout(dropout)
         
-    def build_local_mask(self, 
-                        current_coords: torch.Tensor, 
+    def build_local_mask(self,
+                        current_coords: torch.Tensor,
                         historical_coords: torch.Tensor) -> torch.Tensor:
         """构建局部注意力掩码
-        
+
         只考虑半径内的历史体素，减少计算复杂度。
-        
+
         Args:
             current_coords: 当前体素坐标 [N_current, 3]
             historical_coords: 历史体素坐标 [N_historical, 3]
-            
+
         Returns:
             局部注意力掩码 [N_current, N_historical]，True表示在半径内
         """
         N_current = current_coords.shape[0]
         N_historical = historical_coords.shape[0]
-        
+
         # 确保坐标是浮点类型（解决测试失败问题）
         current_coords = current_coords.float()
         historical_coords = historical_coords.float()
-        
+
         # 计算所有体素对之间的欧氏距离
         # 使用广播计算距离矩阵
         current_expanded = current_coords.unsqueeze(1)  # [N_current, 1, 3]
         historical_expanded = historical_coords.unsqueeze(0)  # [1, N_historical, 3]
-        
+
         # 计算距离 [N_current, N_historical]
         distances = torch.norm(current_expanded - historical_expanded, dim=2)
-        
+
         # 创建掩码：距离 <= local_radius
         local_mask = distances <= self.local_radius
-        
+
         return local_mask
+
+    def _compute_attention(self,
+                          q: torch.Tensor,
+                          k: torch.Tensor,
+                          v: torch.Tensor,
+                          attn_mask: torch.Tensor) -> torch.Tensor:
+        """计算注意力（可被checkpoint的函数）
+
+        Args:
+            q: Query张量 [N_current, num_heads, head_dim]
+            k: Key张量 [N_historical, num_heads, head_dim]
+            v: Value张量 [N_historical, num_heads, head_dim]
+            attn_mask: 注意力掩码 [N_current, 1, N_historical]
+
+        Returns:
+            注意力输出 [N_current, num_heads, head_dim]
+        """
+        # 计算注意力分数
+        # [N_current, num_heads, head_dim] @ [N_historical, num_heads, head_dim].T
+        # -> [N_current, num_heads, N_historical]
+        attn_scores = torch.einsum('qhd,khd->qhk', q, k) / (self.head_dim ** 0.5)
+
+        # 应用局部注意力掩码
+        attn_scores = attn_scores.masked_fill(attn_mask, float('-inf'))
+
+        # 计算注意力权重
+        attn_weights = F.softmax(attn_scores, dim=-1)  # [N_current, num_heads, N_historical]
+        attn_weights = self.dropout(attn_weights)
+
+        # 应用注意力权重到value
+        # [N_current, num_heads, N_historical] @ [N_historical, num_heads, head_dim]
+        # -> [N_current, num_heads, head_dim]
+        output = torch.einsum('qhk,khd->qhd', attn_weights, v)
+
+        return output
     
-    def forward(self, 
-                current_feats: torch.Tensor, 
+    def forward(self,
+                current_feats: torch.Tensor,
                 historical_feats: torch.Tensor,
-                current_coords: torch.Tensor, 
+                current_coords: torch.Tensor,
                 historical_coords: torch.Tensor) -> torch.Tensor:
         """前向传播
-        
+
         Args:
             current_feats: 当前特征 [N_current, feature_dim]
             historical_feats: 历史特征 [N_historical, feature_dim]
             current_coords: 当前体素坐标 [N_current, 3]
             historical_coords: 历史体素坐标 [N_historical, 3]
-            
+
         Returns:
             融合后的特征 [N_current, feature_dim]
         """
         N_current = current_feats.shape[0]
         N_historical = historical_feats.shape[0]
-        
+
         # 1. 构建局部注意力掩码
         local_mask = self.build_local_mask(current_coords, historical_coords)
-        
+
         # 2. 计算query, key, value
         q = self.q_proj(current_feats)  # [N_current, feature_dim]
         k = self.k_proj(historical_feats)  # [N_historical, feature_dim]
         v = self.v_proj(historical_feats)  # [N_historical, feature_dim]
-        
+
         # 3. 重塑为多头注意力格式
         # [N, feature_dim] -> [N, num_heads, head_dim]
         q = q.view(N_current, self.num_heads, self.head_dim)
         k = k.view(N_historical, self.num_heads, self.head_dim)
         v = v.view(N_historical, self.num_heads, self.head_dim)
-        
-        # 4. 计算注意力分数
-        # [N_current, num_heads, head_dim] @ [N_historical, num_heads, head_dim].T
-        # -> [N_current, num_heads, N_historical]
-        attn_scores = torch.einsum('qhd,khd->qhk', q, k) / (self.head_dim ** 0.5)
-        
-        # 5. 应用局部注意力掩码
-        # 将不在局部范围内的注意力分数设为负无穷
+
+        # 4. 计算注意力（可选使用checkpointing）
         attn_mask = ~local_mask.unsqueeze(1)  # [N_current, 1, N_historical]
-        attn_scores = attn_scores.masked_fill(attn_mask, float('-inf'))
-        
-        # 6. 计算注意力权重
-        attn_weights = F.softmax(attn_scores, dim=-1)  # [N_current, num_heads, N_historical]
-        attn_weights = self.dropout(attn_weights)
-        
-        # 7. 应用注意力权重到value
-        # [N_current, num_heads, N_historical] @ [N_historical, num_heads, head_dim]
-        # -> [N_current, num_heads, head_dim]
-        output = torch.einsum('qhk,khd->qhd', attn_weights, v)
-        
-        # 8. 合并多头输出
+
+        if self.use_checkpoint:
+            # 使用gradient checkpointing节省显存
+            output = checkpoint(
+                self._compute_attention,
+                q, k, v, attn_mask
+            )
+        else:
+            # 常规计算
+            output = self._compute_attention(q, k, v, attn_mask)
+
+        # 5. 合并多头输出
         output = output.reshape(N_current, self.feature_dim)  # [N_current, feature_dim]
         output = self.out_proj(output)
-        
+
         return output
 
 
@@ -204,40 +237,41 @@ class HierarchicalAttention(nn.Module):
 
 class StreamCrossAttention(nn.Module):
     """流式Cross-Attention融合模块
-    
+
     主融合模块，整合局部注意力和分层注意力。
-    
+
     Args:
         feature_dim: 特征维度
         num_heads: 注意力头数
         local_radius: 局部注意力半径
         hierarchical: 是否使用分层注意力
         dropout: dropout概率
+        use_checkpoint: 是否使用gradient checkpointing节省显存
     """
-    
-    def __init__(self, feature_dim: int, num_heads: int = 8, 
+
+    def __init__(self, feature_dim: int, num_heads: int = 8,
                  local_radius: int = 3, hierarchical: bool = True,
-                 dropout: float = 0.1):
+                 dropout: float = 0.1, use_checkpoint: bool = False):
         super().__init__()
         self.feature_dim = feature_dim
         self.local_radius = local_radius
         self.hierarchical = hierarchical
-        
+
         # 局部注意力
         self.local_attention = LocalCrossAttention(
-            feature_dim, num_heads, local_radius, dropout
+            feature_dim, num_heads, local_radius, dropout, use_checkpoint
         )
-        
+
         # 分层注意力（可选）
         if hierarchical:
             self.hierarchical_attention = HierarchicalAttention(feature_dim)
         else:
             self.hierarchical_attention = None
-            
+
         # 残差连接和归一化
         self.norm1 = nn.LayerNorm(feature_dim)
         self.norm2 = nn.LayerNorm(feature_dim) if hierarchical else None
-        
+
         # 可选的图像特征投影（用于历史-图像特征关联）
         self.img_feat_proj = nn.Linear(feature_dim * 2, feature_dim) if hierarchical else None
         
