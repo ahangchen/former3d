@@ -68,6 +68,16 @@ except ImportError as e:
     logger.error(f"❌ 无法导入StreamSDFFormerIntegrated: {e}")
     sys.exit(1)
 
+# 导入内存管理器
+try:
+    from memory_manager import MemoryManager
+    MEMORY_MANAGER_AVAILABLE = True
+    logger.info("✅ MemoryManager导入成功")
+except ImportError as e:
+    logger.warning(f"⚠️ 无法导入MemoryManager: {e}")
+    logger.warning("⚠️ 将不使用显存清理功能")
+    MEMORY_MANAGER_AVAILABLE = False
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description='流式集成训练脚本')
@@ -88,6 +98,10 @@ def parse_args():
     parser.add_argument('--data-root', type=str, default='/home/cwh/Study/dataset/tartanair', help='TartanAir原始数据根目录')
     parser.add_argument('--sequence-length', type=int, default=10, help='序列长度')
     parser.add_argument('--max-sequences', type=int, default=5, help='最大序列数')
+    
+    # 显存管理参数
+    parser.add_argument('--cleanup-freq', type=int, default=10, help='显存清理频率（每N步清理一次）')
+    parser.add_argument('--memory-threshold', type=float, default=8.0, help='显存阈值（超过此值自动清理，单位GB）')
     
     # 运行模式
     parser.add_argument('--dry-run', action='store_true', help='干运行模式，不实际训练')
@@ -325,6 +339,15 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
     else:
         state_manager = None
     
+    # 创建内存管理器
+    if MEMORY_MANAGER_AVAILABLE:
+        memory_manager = MemoryManager(
+            cleanup_frequency=getattr(args, 'cleanup_freq', 10),
+            memory_threshold_gb=getattr(args, 'memory_threshold', 8.0)
+        )
+    else:
+        memory_manager = None
+    
     for batch_idx, batch in enumerate(dataloader):
         # 确保设备一致性
         if DEVICE_CONSISTENCY_AVAILABLE:
@@ -388,6 +411,14 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
                 total_loss += sequence_loss.item()
                 total_frames += sequence_length
         
+        # 内存管理：定期清理或按需清理
+        if memory_manager is not None:
+            # 每个batch后执行定期清理
+            memory_manager.step()
+            
+            # 检查是否需要按阈值清理
+            memory_manager.cleanup_if_needed()
+        
         # 打印进度
         if (batch_idx + 1) % 10 == 0:
             avg_loss = total_loss / max(total_frames, 1)
@@ -403,6 +434,15 @@ def test_model(model, dataloader, device, args):
     model.eval()
     total_loss = 0.0
     total_frames = 0
+    
+    # 创建内存管理器
+    if MEMORY_MANAGER_AVAILABLE:
+        memory_manager = MemoryManager(
+            cleanup_frequency=getattr(args, 'cleanup_freq', 10),
+            memory_threshold_gb=getattr(args, 'memory_threshold', 8.0)
+        )
+    else:
+        memory_manager = None
     
     with torch.no_grad():
         for batch_idx, batch in enumerate(dataloader):
@@ -454,6 +494,14 @@ def test_model(model, dataloader, device, args):
                 loss = compute_loss(output, batch['tsdf'], frame_data)
                 total_loss += loss.item()
                 total_frames += 1
+            
+            # 内存管理：定期清理或按需清理
+            if memory_manager is not None:
+                # 每个batch后执行定期清理
+                memory_manager.step()
+                
+                # 检查是否需要按阈值清理
+                memory_manager.cleanup_if_needed()
             
             # 打印进度
             if (batch_idx + 1) % 5 == 0:
