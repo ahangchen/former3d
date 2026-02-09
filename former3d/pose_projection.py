@@ -63,13 +63,19 @@ class PoseProjection(nn.Module):
         transform = torch.bmm(inv_current_pose, historical_pose)  # [batch, 4, 4]
         
         # 按批次处理
-        batch_inds = torch.unique(voxel_batch_inds)
-        for batch_idx_tensor in batch_inds:
-            batch_idx = batch_idx_tensor.item()  # 转换为Python整数
+        unique_batch_inds = torch.unique(voxel_batch_inds)
+        for batch_idx_tensor in unique_batch_inds:
+            raw_batch_idx = batch_idx_tensor.item()  # 转换为Python整数
             
-            # 安全检查：确保batch_idx在有效范围内
+            # 【正确修复】将历史batch_idx归一化到当前batch_size范围
+            # 原因：历史状态可能是在不同batch_size下创建的
+            # 例如：历史状态在batch_size=2时创建，batch_inds=[0,1]
+            #      现在在batch_size=1时使用，需要将batch_idx=1归一化为0
+            batch_idx = raw_batch_idx % batch_size
+            
+            # 安全检查：确保归一化后的batch_idx在有效范围内
             if batch_idx >= batch_size:
-                print(f"警告：batch_idx {batch_idx} 超出范围 (batch_size={batch_size})，跳过")
+                print(f"警告：归一化后的batch_idx {batch_idx} 仍超出范围 (batch_size={batch_size})，跳过")
                 continue
                 
             batch_mask = voxel_batch_inds == batch_idx_tensor
