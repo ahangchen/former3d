@@ -12,50 +12,60 @@ logger = logging.getLogger(__name__)
 
 class StreamStateManager:
     """
-    管理流式训练状态
-    
+    管理流式训练状态（优化版本，防止内存泄漏）
+
     在流式训练中，模型需要维护序列间的状态信息。
     这个类负责：
     1. 存储和检索序列状态
     2. 在序列边界重置状态
-    3. 管理状态的生命周期
+    3. 管理状态的生命周期（防止内存泄漏）
+    4. 使用LRU策略自动清理旧状态
     """
-    
-    def __init__(self, device: torch.device = None):
+
+    def __init__(self, device: torch.device = None, max_cached_states: int = 5):
         """
         初始化状态管理器
-        
+
         Args:
             device: 状态存储的设备（默认与模型相同）
+            max_cached_states: 最大缓存的序列状态数量（LRU策略）
         """
         self.device = device
         self.state_cache: Dict[str, Dict[str, Any]] = {}
         self.current_sequence: Optional[str] = None
         self.current_state: Optional[Dict[str, Any]] = None
-        
-        logger.info(f"初始化StreamStateManager，设备: {device}")
+        self.max_cached_states = max_cached_states
+        self.sequence_access_order = []  # 记录序列访问顺序（用于LRU）
+
+        logger.info(f"初始化StreamStateManager，设备: {device}，最大缓存状态: {max_cached_states}")
     
     def reset(self, sequence_id: str = None) -> None:
         """
-        重置状态
-        
+        重置状态（优化版本，防止内存泄漏）
+
         Args:
             sequence_id: 序列ID，如果提供则只重置该序列的状态
         """
         if sequence_id is None:
-            # 重置所有状态
+            # 重置所有状态 - 先释放所有张量
+            for seq_id, state in self.state_cache.items():
+                logger.debug(f"释放序列 {seq_id} 的状态")
+                self._release_state_tensors(state)
             self.state_cache.clear()
             self.current_sequence = None
             self.current_state = None
             logger.debug("重置所有序列状态")
         else:
-            # 重置特定序列的状态
+            # 重置特定序列的状态 - 先释放张量
             if sequence_id in self.state_cache:
+                old_state = self.state_cache[sequence_id]
+                logger.debug(f"释放序列 {sequence_id} 的状态")
+                self._release_state_tensors(old_state)
                 del self.state_cache[sequence_id]
-                logger.debug(f"重置序列状态: {sequence_id}")
-            
+
             # 如果当前序列被重置，清除当前状态
             if self.current_sequence == sequence_id:
+                self._release_state_tensors(self.current_state) if self.current_state is not None else None
                 self.current_sequence = None
                 self.current_state = None
     
@@ -76,20 +86,20 @@ class StreamStateManager:
             # 返回指定序列的状态
             return self.state_cache.get(sequence_id)
     
-    def update_state(self, 
-                    new_state: Dict[str, Any], 
-                    sequence_id: str, 
+    def update_state(self,
+                    new_state: Dict[str, Any],
+                    sequence_id: str,
                     frame_idx: int = 0,
                     reset_state: bool = False) -> Dict[str, Any]:
         """
-        更新序列状态
-        
+        更新序列状态（优化版本，防止内存泄漏）
+
         Args:
             new_state: 新的状态字典
             sequence_id: 序列ID
             frame_idx: 帧索引（用于日志）
             reset_state: 是否重置状态（序列开始）
-            
+
         Returns:
             更新后的状态
         """
@@ -98,15 +108,41 @@ class StreamStateManager:
             self.reset(sequence_id)
             self.current_sequence = sequence_id
             logger.debug(f"序列 {sequence_id} 开始，帧 {frame_idx}")
-        
+        else:
+            # 如果序列ID已存在，先释放旧状态
+            if sequence_id in self.state_cache:
+                old_state = self.state_cache[sequence_id]
+                logger.debug(f"释放序列 {sequence_id} 的旧状态")
+                # 显式释放旧状态中的张量
+                self._release_state_tensors(old_state)
+                del old_state
+
         # 确保状态在正确设备上
         if self.device is not None:
             new_state = self._move_to_device(new_state, self.device)
-        
+
         # 更新状态
         self.current_state = new_state
         self.state_cache[sequence_id] = new_state
-        
+
+        # 更新访问顺序（LRU机制）
+        if sequence_id in self.sequence_access_order:
+            self.sequence_access_order.remove(sequence_id)
+        self.sequence_access_order.append(sequence_id)
+
+        # 检查是否需要清理旧状态（LRU）
+        if len(self.state_cache) > self.max_cached_states:
+            # 移除最久未访问的状态
+            excess_count = len(self.state_cache) - self.max_cached_states
+            for _ in range(excess_count):
+                if self.sequence_access_order:
+                    oldest_seq_id = self.sequence_access_order.pop(0)
+                    if oldest_seq_id in self.state_cache:
+                        logger.debug(f"LRU清理: 移除最久未访问的状态 {oldest_seq_id}")
+                        old_state = self.state_cache[oldest_seq_id]
+                        self._release_state_tensors(old_state)
+                        del self.state_cache[oldest_seq_id]
+
         return self.current_state
     
     def _move_to_device(self, state: Dict[str, Any], device: torch.device) -> Dict[str, Any]:
@@ -139,7 +175,70 @@ class StreamStateManager:
                 moved_state[key] = value
         
         return moved_state
-    
+
+    def _release_state_tensors(self, state: Dict[str, Any]) -> None:
+        """
+        递归释放状态字典中的张量（防止内存泄漏）
+
+        将张量移动到CPU并删除引用，让Python垃圾回收器回收内存
+
+        Args:
+            state: 状态字典
+        """
+        if not isinstance(state, dict):
+            return
+
+        for key, value in state.items():
+            if isinstance(value, torch.Tensor):
+                # 将张量移动到CPU以释放GPU显存
+                value = value.cpu()
+                # 显式删除引用
+                del value
+            elif isinstance(value, dict):
+                # 递归处理嵌套字典
+                self._release_state_tensors(value)
+            elif isinstance(value, (list, tuple)):
+                # 处理列表/元组中的张量
+                for v in value:
+                    if isinstance(v, torch.Tensor):
+                        v = v.cpu()
+                        del v
+                    elif isinstance(v, dict):
+                        self._release_state_tensors(v)
+
+    def clear_old_states(self, keep_last_n: int = 3) -> None:
+        """
+        清理旧的状态，只保留最近的n个序列状态（防止内存泄漏）
+
+        Args:
+            keep_last_n: 要保留的序列数量
+        """
+        if len(self.state_cache) <= keep_last_n:
+            logger.debug(f"状态数量({len(self.state_cache)}) <= 保留数量({keep_last_n})，无需清理")
+            return
+
+        # 根据访问顺序确定要保留哪些状态（LRU策略）
+        sequences_to_keep = set(self.sequence_access_order[-keep_last_n:]) if self.sequence_access_order else set()
+
+        sequences_to_remove = []
+        for seq_id in list(self.state_cache.keys()):
+            if seq_id not in sequences_to_keep and seq_id != self.current_sequence:
+                sequences_to_remove.append(seq_id)
+
+        removed_count = 0
+        for seq_id in sequences_to_remove:
+            # 释放旧状态中的张量
+            old_state = self.state_cache[seq_id]
+            self._release_state_tensors(old_state)
+            # 从缓存中删除
+            del self.state_cache[seq_id]
+            # 从访问顺序中删除
+            if seq_id in self.sequence_access_order:
+                self.sequence_access_order.remove(seq_id)
+            removed_count += 1
+
+        logger.info(f"清理了 {removed_count} 个旧状态，保留 {len(self.state_cache)} 个状态")
+
     def save_state(self, filepath: str) -> None:
         """
         保存状态到文件
