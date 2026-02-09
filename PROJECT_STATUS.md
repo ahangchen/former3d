@@ -51,6 +51,13 @@ python train_stream_integrated.py --epochs 10 --batch-size 1 --sequence-length 5
 - **原始数据**: `/home/cwh/Study/dataset/tartanair/`
 - **SDF数据**: `/home/cwh/coding/former3d/tartanair_sdf_output/`
 
+## 开发原则
+**每完成一个任务，遵循以下流程：**
+1. **提交工作进度**：完成核心功能后立即提交git
+2. **清理中间文件**：删除调试文件、临时测试文件等无效中间文件
+3. **提交清理结果**：只保留最终有效文件，提交清理后的状态
+4. **保持项目简洁**：避免积累未跟踪的临时文件
+
 ## 注意事项
 1. 数据集在线生成TSDF，不依赖预先生成的TSDF文件
 2. 模型输出点云格式的SDF，需要适配损失函数
