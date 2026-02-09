@@ -540,6 +540,15 @@ def test_model(model, dataloader, device, args):
                 
                 # 检查是否需要按阈值清理
                 memory_manager.cleanup_if_needed()
+                
+                # 显存监控（每5个batch）
+                if (batch_idx + 1) % 5 == 0:
+                    memory_info = memory_manager.get_memory_info()
+                    if memory_info.get('cuda_available', False):
+                        logger.info(f"  显存监控 - "
+                                   f"已分配: {memory_info['allocated_gb']:.3f}GB, "
+                                   f"已保留: {memory_info['reserved_gb']:.3f}GB, "
+                                   f"峰值已分配: {memory_info['max_allocated_gb']:.3f}GB")
             
             # 打印进度
             if (batch_idx + 1) % 5 == 0:
