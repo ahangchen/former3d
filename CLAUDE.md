@@ -9,3 +9,8 @@ Programming Guidelines
 7. **Required**: Use conda environment former3d in /home/cwh/miniconda3/envs/former3d to execute all python related job. 
 8. **Forbidden:** Creation of any simplified versions.
 9. **Forbidden:** Duplicate code.
+10. **Required:** After completing each task, follow this workflow:
+    - First, commit the current work progress with `git commit`
+    - Then, clean up all newly created intermediate/debug files that are not needed
+    - Keep only the final effective new files
+    - Finally, commit the clean state with `git commit` again
