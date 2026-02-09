@@ -103,6 +103,9 @@ def parse_args():
     parser.add_argument('--cleanup-freq', type=int, default=10, help='显存清理频率（每N步清理一次）')
     parser.add_argument('--memory-threshold', type=float, default=8.0, help='显存阈值（超过此值自动清理，单位GB）')
     
+    # 梯度累积参数
+    parser.add_argument('--accumulation-steps', type=int, default=1, help='梯度累积步数（1表示不累积）')
+    
     # 运行模式
     parser.add_argument('--dry-run', action='store_true', help='干运行模式，不实际训练')
     parser.add_argument('--test-only', action='store_true', help='仅测试模式')
@@ -328,10 +331,13 @@ def compute_loss(output, ground_truth, frame_data):
         return nn.functional.mse_loss(sdf_pred, tsdf_gt)
 
 def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
-    """流式训练一个epoch"""
+    """流式训练一个epoch（支持梯度累积）"""
     model.train()
     total_loss = 0.0
     total_frames = 0
+    
+    # 获取梯度累积步数
+    accumulation_steps = getattr(args, 'accumulation_steps', 1)
     
     # 创建状态管理器
     if STREAM_STATE_MANAGER_AVAILABLE:
@@ -347,6 +353,10 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         )
     else:
         memory_manager = None
+    
+    # 梯度累积计数器
+    accumulation_counter = 0
+    optimizer.zero_grad()
     
     for batch_idx, batch in enumerate(dataloader):
         # 确保设备一致性
@@ -395,21 +405,36 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
                 reset_state=reset_state
             )
             
-            # 计算损失
+            # 计算损失（除以累积步数以保持梯度一致性）
             loss = compute_loss(output, batch['tsdf'], frame_data)
+            loss = loss / accumulation_steps  # 除以累积步数
             sequence_loss += loss
+            
+            # 反向传播（累积梯度）
+            loss.backward()
             
             # 更新状态
             if state_manager is not None and new_state is not None:
                 state_manager.update_state(new_state, sequence_id, frame_idx, reset_state=False)
+        
+        # 累积梯度计数
+        accumulation_counter += 1
+        
+        # 达到累积步数或最后一个batch时更新参数
+        if accumulation_counter % accumulation_steps == 0:
+            # 梯度裁剪（可选，防止梯度爆炸）
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             
-            # 每处理完一个序列进行梯度更新
-            if (frame_idx + 1) == sequence_length:
-                sequence_loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
-                total_loss += sequence_loss.item()
-                total_frames += sequence_length
+            # 更新参数
+            optimizer.step()
+            optimizer.zero_grad()
+            
+            # 记录损失（需要乘回累积步数）
+            total_loss += sequence_loss.item() * accumulation_steps
+            total_frames += sequence_length
+            
+            # 重置序列损失
+            sequence_loss = 0.0
         
         # 内存管理：定期清理或按需清理
         if memory_manager is not None:
@@ -423,7 +448,20 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         if (batch_idx + 1) % 10 == 0:
             avg_loss = total_loss / max(total_frames, 1)
             logger.info(f"Epoch {epoch+1}, Batch {batch_idx+1}/{len(dataloader)}, "
-                       f"Loss: {avg_loss:.6f}")
+                       f"Loss: {avg_loss:.6f}, Accumulation: {accumulation_counter % accumulation_steps + 1}/{accumulation_steps}")
+    
+    # 处理剩余的累积梯度
+    if accumulation_counter % accumulation_steps != 0:
+        # 梯度裁剪
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
+        # 更新参数
+        optimizer.step()
+        optimizer.zero_grad()
+        
+        # 记录损失
+        total_loss += sequence_loss.item() * (accumulation_counter % accumulation_steps)
+        total_frames += sequence_length
     
     # 计算平均损失
     avg_loss = total_loss / max(total_frames, 1)
