@@ -262,8 +262,28 @@ class Former3D(nn.Module):
 
             valid = valid.transpose(0, 1).flatten(1).transpose(0, 1)
             features = pools.transpose(0, 1).flatten(1).transpose(0, 1)
-            valid_features = features[torch.nonzero(valid[:, 0]).squeeze(1)]
-            
+
+            # 关键修复：确保每个batch至少有一个有效特征，避免batch维度被改变
+            valid_mask = valid[:, 0]  # [batch, D*H*W]
+            batch_size = valid_mask.shape[0]
+
+            # 检查每个batch是否有有效特征
+            valid_per_batch = valid_mask.any(dim=1)  # [batch] - 每个batch是否至少有一个有效体素
+
+            # 对于没有有效特征的batch，强制标记第一个位置为有效
+            for b in range(batch_size):
+                if not valid_per_batch[b]:
+                    # 这个batch的所有体素都是无效的，强制第一个位置为有效
+                    valid_mask[b, 0] = True
+                    # 如果features中这个位置也是0，设置为0.1避免除零错误
+                    if features[b, 0] == 0:
+                        features[b, 0] = 0.1
+
+            # 提取有效特征（现在确保每个batch至少有一个）
+            valid_indices = torch.nonzero(valid_mask).squeeze(1)
+            valid_features = features[valid_indices]
+
+            # 重新构造batch维度一致的输出
             outputs = inputs.replace_feature(torch.cat([inputs.features, self.global_norm(valid_features)], dim=1))
             feats[-1] = outputs
         
