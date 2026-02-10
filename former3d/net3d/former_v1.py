@@ -271,14 +271,19 @@ class Former3D(nn.Module):
             # valid标记非零体素位置
             valid = ~((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
 
+            # 从原始dense中提取有效体素的特征
+            valid_expanded = valid.expand_as(inputs_dense)
+            original_features = inputs_dense[valid_expanded].view(-1, inputs_dense.shape[1])  # [N_valid, C]
+
             # 从归一化的dense中提取有效体素的特征
-            # 将valid广播到pools_norm的通道维度
-            valid_expanded = valid.expand_as(pools_norm)
-            # 筛选出有效体素的特征
-            valid_pools = pools_norm[valid_expanded].view(-1, pools_norm.shape[1])  # [N_valid, num_scales*C]
+            valid_expanded_pools = valid.expand_as(pools_norm)
+            pooled_features = pools_norm[valid_expanded_pools].view(-1, pools_norm.shape[1])  # [N_valid, num_scales*C]
+
+            # 拼接原始特征和池化特征: [N_valid, C*(1+num_scales)]
+            concatenated_features = torch.cat([original_features, pooled_features], dim=1)
 
             # 更新稀疏张量的特征
-            outputs = inputs.replace_feature(valid_pools)
+            outputs = inputs.replace_feature(concatenated_features)
             feats[-1] = outputs
         
         x = None
