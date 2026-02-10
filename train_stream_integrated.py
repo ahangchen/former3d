@@ -700,7 +700,7 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
     avg_loss = total_loss / max(total_frames, 1)
     return avg_loss
 def test_model(model, dataloader, device, args):
-    """测试模型"""
+    """测试模型（批量处理，不遍历frame_idx）"""
     model.eval()
     total_loss = 0.0
     total_frames = 0
@@ -729,50 +729,44 @@ def test_model(model, dataloader, device, args):
             batch_size = batch['rgb_images'].shape[0]
             sequence_length = batch['rgb_images'].shape[1]
 
-            # 重置状态
-            state = None
+            # 直接调用模型的forward_sequence（批量处理整个序列）
+            # batch['rgb_images']: (batch, n_view, 3, H, W)
+            # batch['poses']: (batch, n_view, 4, 4)
+            # batch['intrinsics']: (batch, n_view, 3, 3)
+            images = batch['rgb_images']
+            poses = batch['poses']
+            intrinsics = batch['intrinsics']
 
-            for frame_idx in range(sequence_length):
-                # 提取当前帧数据
-                frame_data = extract_frame_data(batch, frame_idx, device)
+            # 调用forward_sequence，内部处理序列（frame_idx循环在模型内部）
+            if hasattr(model, 'module'):
+                outputs, states = model.module.forward_sequence(images, poses, intrinsics)
+            else:
+                outputs, states = model.forward_sequence(images, poses, intrinsics)
 
-                # 前向传播
-                # 如果模型被DataParallel包装，使用model.module.forward_single_frame
-                if hasattr(model, 'module'):
-                    output, state = model.module.forward_single_frame(
-                        images=frame_data['images'],
-                        poses=frame_data['poses'],
-                        intrinsics=frame_data['intrinsics'],
-                        reset_state=(frame_idx == 0)
-                    )
-                else:
-                    output, state = model.forward_single_frame(
-                        images=frame_data['images'],
-                        poses=frame_data['poses'],
-                        intrinsics=frame_data['intrinsics'],
-                        reset_state=(frame_idx == 0)
-                    )
-
-                # 调试：打印输出信息（仅第一帧）
-                if batch_idx == 0 and frame_idx == 0:
-                    logger.info(f"测试批次 {batch_idx}, 帧 {frame_idx}:")
-                    if isinstance(output, dict):
-                        logger.info(f"  输出字典键: {list(output.keys())}")
-                        for k, v in output.items():
-                            if v is not None:
-                                if hasattr(v, 'shape'):
-                                    logger.info(f"    {k}: {v.shape}")
-                                else:
-                                    logger.info(f"    {k}: {type(v)}")
+            # 调试：打印输出信息（仅第一个batch）
+            if batch_idx == 0:
+                logger.info(f"测试批次 {batch_idx}:")
+                if isinstance(outputs, dict):
+                    logger.info(f"  输出字典键: {list(outputs.keys())}")
+                    for k, v in outputs.items():
+                        if v is not None:
+                            if hasattr(v, 'shape'):
+                                logger.info(f"    {k}: {v.shape}")
                             else:
-                                logger.info(f"    {k}: None")
-                    else:
-                        logger.info(f"  输出类型: {type(output)}")
+                                logger.info(f"    {k}: {type(v)}")
+                        else:
+                            logger.info(f"    {k}: None")
+                else:
+                    logger.info(f"  输出类型: {type(outputs)}")
+                logger.info(f"  状态数量: {len(states)}")
 
-                # 计算损失
-                loss = compute_loss(output, batch['tsdf'], frame_data)
-                total_loss += loss.item()
-                total_frames += 1
+            # 计算损失（整个序列的损失）
+            # 由于batch['tsdf']是(batch, 1, D, H, W)格式，outputs是(batch, n_view, ...)格式
+            # 我们需要适配损失函数的期望输入
+            # 这里使用简化的损失计算
+            loss = compute_loss(outputs, batch['tsdf'], {})
+            total_loss += loss.item()
+            total_frames += sequence_length
 
             # 内存管理：定期清理或按需清理
             if memory_manager is not None:
