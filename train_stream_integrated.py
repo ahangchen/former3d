@@ -114,7 +114,9 @@ def parse_args():
     # 设备参数
     parser.add_argument('--no-cuda', action='store_true', help='禁用CUDA')
     parser.add_argument('--device', type=str, default='cuda:0', help='设备选择')
-    
+    parser.add_argument('--multi-gpu', action='store_true', help='启用多GPU训练（使用所有可用GPU）')
+    parser.add_argument('--gpu-ids', type=int, nargs='+', default=None, help='指定使用的GPU ID列表，如 --gpu-ids 0 1')
+
     return parser.parse_args()
 
 def create_model(args, device):
@@ -136,12 +138,31 @@ def create_model(args, device):
     
     # 移动到设备
     model = model.to(device)
+
+    # 启用多GPU训练
+    if torch.cuda.is_available() and (args.multi_gpu or args.gpu_ids is not None):
+        # 确定使用的GPU
+        if args.gpu_ids is not None:
+            gpu_ids = args.gpu_ids
+        else:
+            # 使用所有可用GPU
+            gpu_ids = list(range(torch.cuda.device_count()))
+
+        if len(gpu_ids) > 1:
+            logger.info(f"启用多GPU训练，使用GPU: {gpu_ids}")
+            model = torch.nn.DataParallel(model, device_ids=gpu_ids)
+            logger.info(f"✅ 模型已包装为DataParallel")
+        else:
+            logger.info(f"仅使用单个GPU: {gpu_ids}")
+    else:
+        logger.info(f"使用单GPU/CPU训练")
+
     logger.info(f"✅ 模型创建成功，参数数量: {sum(p.numel() for p in model.parameters())}")
     logger.info(f"   注意力头数: {args.attn_heads}")
     logger.info(f"   注意力层数: {args.attn_layers}")
     logger.info(f"   体素大小: {args.voxel_size}")
     logger.info(f"   裁剪尺寸: {crop_size}")
-    
+
     return model
 
 def create_dataloader(args, device):
@@ -402,7 +423,11 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
             logger.info(f"Batch {batch_idx}: images shape={images.shape}, poses shape={poses.shape}, intrinsics shape={intrinsics.shape}")
 
         # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
-        outputs, states = model.forward_sequence(images, poses, intrinsics)
+        # 如果模型被DataParallel包装，使用model.module.forward_sequence
+        if hasattr(model, 'module'):
+            outputs, states = model.module.forward_sequence(images, poses, intrinsics)
+        else:
+            outputs, states = model.forward_sequence(images, poses, intrinsics)
 
 
         # 计算损失（整个序列的损失）
@@ -527,7 +552,11 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
             logger.info(f"Validation Batch {batch_idx}: images shape={images.shape}, poses shape={poses.shape}, intrinsics shape={intrinsics.shape}")
 
         # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
-        outputs, states = model.forward_sequence(images, poses, intrinsics)
+        # 如果模型被DataParallel包装，使用model.module.forward_sequence
+        if hasattr(model, 'module'):
+            outputs, states = model.module.forward_sequence(images, poses, intrinsics)
+        else:
+            outputs, states = model.forward_sequence(images, poses, intrinsics)
         # 计算损失（整个序列的损失）
         # batch['tsdf']: (batch, 1, D, H, W)
         # outputs: (batch, n_view, ...)
@@ -619,14 +648,23 @@ def test_model(model, dataloader, device, args):
             for frame_idx in range(sequence_length):
                 # 提取当前帧数据
                 frame_data = extract_frame_data(batch, frame_idx, device)
-                
+
                 # 前向传播
-                output, state = model.forward_single_frame(
-                    images=frame_data['images'],
-                    poses=frame_data['poses'],
-                    intrinsics=frame_data['intrinsics'],
-                    reset_state=(frame_idx == 0)
-                )
+                # 如果模型被DataParallel包装，使用model.module.forward_single_frame
+                if hasattr(model, 'module'):
+                    output, state = model.module.forward_single_frame(
+                        images=frame_data['images'],
+                        poses=frame_data['poses'],
+                        intrinsics=frame_data['intrinsics'],
+                        reset_state=(frame_idx == 0)
+                    )
+                else:
+                    output, state = model.forward_single_frame(
+                        images=frame_data['images'],
+                        poses=frame_data['poses'],
+                        intrinsics=frame_data['intrinsics'],
+                        reset_state=(frame_idx == 0)
+                    )
                 
                 # 调试：打印输出信息（仅第一帧）
                 if batch_idx == 0 and frame_idx == 0:
@@ -686,10 +724,20 @@ def main():
     # 设置设备
     if args.no_cuda or not torch.cuda.is_available():
         device = torch.device('cpu')
+        logger.info("使用CPU模式")
     else:
-        device = torch.device(args.device)
-    
-    logger.info(f"使用设备: {device}")
+        # 如果启用多GPU，使用cuda:0作为主设备
+        if args.multi_gpu or args.gpu_ids is not None:
+            device = torch.device('cuda:0')
+            logger.info(f"使用多GPU模式，主设备: {device}")
+            logger.info(f"可用GPU数量: {torch.cuda.device_count()}")
+            for i in range(torch.cuda.device_count()):
+                props = torch.cuda.get_device_properties(i)
+                logger.info(f"  GPU {i}: {props.name}, {props.total_memory / 1024**3:.2f} GB")
+        else:
+            device = torch.device(args.device)
+            logger.info(f"使用单GPU模式，设备: {device}")
+
     logger.info(f"参数: {args}")
     
     # 创建模型
@@ -716,14 +764,23 @@ def main():
             try:
                 # 提取第一帧
                 frame_data = extract_frame_data(batch, 0, device)
-                
+
                 # 前向传播
-                output, state = model.forward_single_frame(
-                    images=frame_data['images'],
-                    poses=frame_data['poses'],
-                    intrinsics=frame_data['intrinsics'],
-                    reset_state=True
-                )
+                # 如果模型被DataParallel包装，使用model.module.forward_single_frame
+                if hasattr(model, 'module'):
+                    output, state = model.module.forward_single_frame(
+                        images=frame_data['images'],
+                        poses=frame_data['poses'],
+                        intrinsics=frame_data['intrinsics'],
+                        reset_state=True
+                    )
+                else:
+                    output, state = model.forward_single_frame(
+                        images=frame_data['images'],
+                        poses=frame_data['poses'],
+                        intrinsics=frame_data['intrinsics'],
+                        reset_state=True
+                    )
                 
                 logger.info(f"✅ 前向传播成功")
                 if isinstance(output, dict):
