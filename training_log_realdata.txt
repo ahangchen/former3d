@@ -1,0 +1,264 @@
+2026-02-10 13:12:35,202 - __main__ - INFO - ✅ 设备一致性工具导入成功
+2026-02-10 13:12:35,203 - __main__ - INFO - ✅ 显存分析工具导入成功
+2026-02-10 13:12:35,390 - __main__ - INFO - ✅ MultiSequenceTartanAirDataset导入成功
+2026-02-10 13:12:35,391 - __main__ - INFO - ✅ StreamStateManager导入成功
+2026-02-10 13:12:37,142 - __main__ - INFO - ✅ StreamSDFFormerIntegrated导入成功
+2026-02-10 13:12:37,143 - __main__ - INFO - ✅ MemoryManager导入成功
+2026-02-10 13:12:37,144 - __main__ - INFO - 使用多GPU模式，主设备: cuda:0
+2026-02-10 13:12:37,144 - __main__ - INFO - 可用GPU数量: 2
+2026-02-10 13:12:37,144 - __main__ - INFO -   GPU 0: NVIDIA P102-100, 9.91 GB
+2026-02-10 13:12:37,145 - __main__ - INFO -   GPU 1: NVIDIA P102-100, 9.91 GB
+2026-02-10 13:12:37,145 - __main__ - INFO - 参数: Namespace(accumulation_steps=1, attn_heads=1, attn_layers=1, batch_size=4, cleanup_freq=10, crop_size='8,8,6', data_root='/home/cwh/Study/dataset/tartanair', debug=False, device='cuda:0', dry_run=False, enable_memory_profile=False, epochs=1, gpu_ids=None, learning_rate=0.0001, max_sequences=10, memory_profile_output='memory_profile', memory_threshold=8.0, multi_gpu=True, no_cuda=False, num_workers=2, sequence_length=5, test_only=False, voxel_size=0.25)
+2026-02-10 13:12:37,145 - __main__ - INFO - 创建StreamSDFFormerIntegrated模型...
+2026-02-10 13:12:39,660 - __main__ - INFO - 启用多GPU训练，使用GPU: [0, 1]
+2026-02-10 13:12:39,661 - __main__ - INFO - ✅ 模型已包装为DataParallel
+2026-02-10 13:12:39,668 - __main__ - INFO - ✅ 模型创建成功，参数数量: 29913919
+2026-02-10 13:12:39,668 - __main__ - INFO -    注意力头数: 1
+2026-02-10 13:12:39,668 - __main__ - INFO -    注意力层数: 1
+2026-02-10 13:12:39,668 - __main__ - INFO -    体素大小: 0.25
+2026-02-10 13:12:39,668 - __main__ - INFO -    裁剪尺寸: (8, 8, 6)
+2026-02-10 13:12:39,668 - __main__ - INFO - 创建MultiSequenceTartanAirDataset...
+2026-02-10 13:12:39,675 - __main__ - INFO - ✅ 数据集创建成功，样本数: 808
+2026-02-10 13:12:39,675 - __main__ - INFO - ✅ 数据加载器创建成功，批次大小: 4
+2026-02-10 13:12:39,675 - __main__ - INFO - 开始训练...
+2026-02-10 13:12:39,677 - __main__ - INFO - 开始第 1/1 轮训练
+2026-02-10 13:12:39,678 - stream_state_manager - INFO - 初始化StreamStateManager，设备: cuda:0，最大缓存状态: 5
+2026-02-10 13:12:39,678 - memory_manager - INFO - 初始化内存管理器 - 清理频率: 10步, 显存阈值: 8.0GB
+初始化StreamSDFFormerIntegrated:
+  - 体素大小: 0.25
+  - 裁剪空间: (8, 8, 6)
+  - 融合半径: 2.0
+  - 使用投影占用: False
+发现 2 个序列:
+  - abandonedfactory_sample_P001: 434 帧
+  - gascola_sample_P001: 382 帧
+多序列TartanAir数据集初始化完成:
+  总序列数: 2
+  总片段数: 808
+  片段长度: 5 帧
+  片段步长: 1
+  裁剪尺寸: (8, 8, 6) 体素
+  体素大小: 0.25米
+  图像大小: (256, 256)
+2026-02-10 13:12:40,001 - __main__ - INFO - Raw batch - images shape: torch.Size([4, 5, 3, 256, 256]), poses shape: torch.Size([4, 5, 4, 4]), intrinsics shape: torch.Size([4, 5, 3, 3])
+2026-02-10 13:12:40,001 - __main__ - INFO - Batch 0: images shape=torch.Size([4, 5, 3, 256, 256]), poses shape=torch.Size([4, 5, 4, 4]), intrinsics shape=torch.Size([4, 5, 3, 3])
+/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/functional.py:445: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at  ../aten/src/ATen/native/TensorShape.cpp:2157.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2026-02-10 13:12:43,998 - __main__ - ERROR - 训练过程中发生异常: CUDA out of memory. Tried to allocate 22.00 MiB (GPU 0; 9.91 GiB total capacity; 8.79 GiB already allocated; 21.12 MiB free; 8.86 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+Traceback (most recent call last):
+  File "train_stream_integrated.py", line 907, in main
+    train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+  File "train_stream_integrated.py", line 483, in train_epoch_stream
+    outputs, states = model.module.forward_sequence(images, poses, intrinsics)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 682, in forward_sequence
+    output_t, state_t = self.forward_single_frame(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 312, in forward_single_frame
+    fused_features = self._apply_stream_fusion(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 398, in _apply_stream_fusion
+    fused_features = self.stream_fusion(
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_fusion_concat.py", line 226, in forward
+    output = output + current_feats
+RuntimeError: CUDA out of memory. Tried to allocate 22.00 MiB (GPU 0; 9.91 GiB total capacity; 8.79 GiB already allocated; 21.12 MiB free; 8.86 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2186, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([15538, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2998, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7760, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([26542, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1314, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1518, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+Traceback (most recent call last):
+  File "train_stream_integrated.py", line 946, in <module>
+    main()
+  File "train_stream_integrated.py", line 907, in main
+    train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+  File "train_stream_integrated.py", line 483, in train_epoch_stream
+    outputs, states = model.module.forward_sequence(images, poses, intrinsics)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 682, in forward_sequence
+    output_t, state_t = self.forward_single_frame(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 312, in forward_single_frame
+    fused_features = self._apply_stream_fusion(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 398, in _apply_stream_fusion
+    fused_features = self.stream_fusion(
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_fusion_concat.py", line 226, in forward
+    output = output + current_feats
+RuntimeError: CUDA out of memory. Tried to allocate 22.00 MiB (GPU 0; 9.91 GiB total capacity; 8.79 GiB already allocated; 21.12 MiB free; 8.86 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF

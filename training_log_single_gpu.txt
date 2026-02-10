@@ -1,0 +1,2832 @@
+2026-02-10 13:13:36,631 - __main__ - INFO - ✅ 设备一致性工具导入成功
+2026-02-10 13:13:36,632 - __main__ - INFO - ✅ 显存分析工具导入成功
+2026-02-10 13:13:36,820 - __main__ - INFO - ✅ MultiSequenceTartanAirDataset导入成功
+2026-02-10 13:13:36,821 - __main__ - INFO - ✅ StreamStateManager导入成功
+2026-02-10 13:13:38,556 - __main__ - INFO - ✅ StreamSDFFormerIntegrated导入成功
+2026-02-10 13:13:38,557 - __main__ - INFO - ✅ MemoryManager导入成功
+2026-02-10 13:13:38,558 - __main__ - INFO - 使用单GPU模式，设备: cuda:0
+2026-02-10 13:13:38,558 - __main__ - INFO - 参数: Namespace(accumulation_steps=1, attn_heads=1, attn_layers=1, batch_size=2, cleanup_freq=10, crop_size='8,8,6', data_root='/home/cwh/Study/dataset/tartanair', debug=False, device='cuda:0', dry_run=False, enable_memory_profile=False, epochs=1, gpu_ids=None, learning_rate=0.0001, max_sequences=10, memory_profile_output='memory_profile', memory_threshold=8.0, multi_gpu=False, no_cuda=False, num_workers=2, sequence_length=5, test_only=False, voxel_size=0.25)
+2026-02-10 13:13:38,558 - __main__ - INFO - 创建StreamSDFFormerIntegrated模型...
+2026-02-10 13:13:41,064 - __main__ - INFO - 使用单GPU/CPU训练
+2026-02-10 13:13:41,066 - __main__ - INFO - ✅ 模型创建成功，参数数量: 29913919
+2026-02-10 13:13:41,070 - __main__ - INFO -    注意力头数: 1
+2026-02-10 13:13:41,070 - __main__ - INFO -    注意力层数: 1
+2026-02-10 13:13:41,070 - __main__ - INFO -    体素大小: 0.25
+2026-02-10 13:13:41,070 - __main__ - INFO -    裁剪尺寸: (8, 8, 6)
+2026-02-10 13:13:41,070 - __main__ - INFO - 创建MultiSequenceTartanAirDataset...
+2026-02-10 13:13:41,077 - __main__ - INFO - ✅ 数据集创建成功，样本数: 808
+2026-02-10 13:13:41,078 - __main__ - INFO - ✅ 数据加载器创建成功，批次大小: 2
+2026-02-10 13:13:41,078 - __main__ - INFO - 开始训练...
+2026-02-10 13:13:41,079 - __main__ - INFO - 开始第 1/1 轮训练
+2026-02-10 13:13:41,081 - stream_state_manager - INFO - 初始化StreamStateManager，设备: cuda:0，最大缓存状态: 5
+2026-02-10 13:13:41,081 - memory_manager - INFO - 初始化内存管理器 - 清理频率: 10步, 显存阈值: 8.0GB
+初始化StreamSDFFormerIntegrated:
+  - 体素大小: 0.25
+  - 裁剪空间: (8, 8, 6)
+  - 融合半径: 2.0
+  - 使用投影占用: False
+发现 2 个序列:
+  - abandonedfactory_sample_P001: 434 帧
+  - gascola_sample_P001: 382 帧
+多序列TartanAir数据集初始化完成:
+  总序列数: 2
+  总片段数: 808
+  片段长度: 5 帧
+  片段步长: 1
+  裁剪尺寸: (8, 8, 6) 体素
+  体素大小: 0.25米
+  图像大小: (256, 256)
+2026-02-10 13:13:41,293 - __main__ - INFO - Raw batch - images shape: torch.Size([2, 5, 3, 256, 256]), poses shape: torch.Size([2, 5, 4, 4]), intrinsics shape: torch.Size([2, 5, 3, 3])
+2026-02-10 13:13:41,294 - __main__ - INFO - Batch 0: images shape=torch.Size([2, 5, 3, 256, 256]), poses shape=torch.Size([2, 5, 4, 4]), intrinsics shape=torch.Size([2, 5, 3, 3])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([5477, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2135, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8474, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([719, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2353, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([6130, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3554, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1826, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3223, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([14029, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8183, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3833, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3099, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7007, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8769, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([16342, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([879, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([5611, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([5146, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8962, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([14788, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([764, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3539, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4213, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3318, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3329, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2306, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2004, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([6853, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([601, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7270, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([12163, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([6868, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([6848, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([437, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1960, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3816, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([25449, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2508, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([26009, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8290, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1851, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1122, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1255, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3530, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([612, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([11487, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1018, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([736, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/functional.py:445: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at  ../aten/src/ATen/native/TensorShape.cpp:2157.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2026-02-10 13:13:52,208 - memory_manager - INFO - CUDA缓存清理 - 释放保留: 3.07GB, 释放分配: 0.00GB
+2026-02-10 13:13:52,296 - memory_manager - INFO - 垃圾回收 - 回收了464个对象
+2026-02-10 13:13:52,296 - __main__ - INFO - Epoch 1, Batch 10/404, Loss: 0.057498, Accumulation: 1/1
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3477, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2215, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1336, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([771, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([26773, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([172, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4521, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2070, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([9362, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7951, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1043, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7342, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([913, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4612, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1991, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4566, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([10671, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2078, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([13726, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([11520, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([675, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7835, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8479, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([8480, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1019, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2217, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([800, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4962, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([13920, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1349, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([489, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2250, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7821, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4060, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([15560, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([10208, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([501, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2422, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([480, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([609, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([9970, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1617, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4180, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([928, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1032, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([18716, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4034, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([16915, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([5801, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([526, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+2026-02-10 13:14:01,847 - memory_manager - INFO - CUDA缓存清理 - 释放保留: 1.57GB, 释放分配: 0.00GB
+2026-02-10 13:14:01,906 - memory_manager - INFO - 垃圾回收 - 回收了448个对象
+2026-02-10 13:14:01,907 - __main__ - INFO - Epoch 1, Batch 20/404, Loss: 0.037723, Accumulation: 1/1
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1855, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3871, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1286, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2081, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2683, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1833, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2122, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2991, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([844, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2584, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([2814, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7301, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1027, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([4685, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([7267, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([734, 1])
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([6462, 1])
+2026-02-10 13:14:05,370 - __main__ - ERROR - 训练过程中发生异常: Expected more than 1 value per channel when training, got input size torch.Size([1, 128])
+Traceback (most recent call last):
+  File "train_stream_integrated.py", line 907, in main
+    train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+  File "train_stream_integrated.py", line 485, in train_epoch_stream
+    outputs, states = model.forward_sequence(images, poses, intrinsics)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 682, in forward_sequence
+    output_t, state_t = self.forward_single_frame(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 305, in forward_single_frame
+    voxel_outputs, proj_occ_logits, bp_data = super().forward(batch, voxel_inds_16)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/sdfformer.py", line 145, in forward
+    voxel_features = self.net3d[resname](voxel_features, voxel_dim, res, hash_size=hash_size)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/former_v1.py", line 221, in forward
+    spconv_tensor = self.sp_convs[i](spconv_tensor)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/spconv/pytorch/modules.py", line 141, in forward
+    input = input.replace_feature(module(input.features))
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/sparse3d.py", line 438, in forward
+    output = super().forward(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 168, in forward
+    return F.batch_norm(
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/functional.py", line 2280, in batch_norm
+    _verify_batch_size(input.size())
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/functional.py", line 2248, in _verify_batch_size
+    raise ValueError("Expected more than 1 value per channel when training, got input size {}".format(size))
+ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 128])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([3317, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+从fine分辨率提取SDF和occupancy，形状: torch.Size([1005, 1])
+体素网格大小: [8, 8, 6]
+提取历史特征用于流式融合
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+Traceback (most recent call last):
+  File "train_stream_integrated.py", line 946, in <module>
+    main()
+  File "train_stream_integrated.py", line 907, in main
+    train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+  File "train_stream_integrated.py", line 485, in train_epoch_stream
+    outputs, states = model.forward_sequence(images, poses, intrinsics)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 682, in forward_sequence
+    output_t, state_t = self.forward_single_frame(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 305, in forward_single_frame
+    voxel_outputs, proj_occ_logits, bp_data = super().forward(batch, voxel_inds_16)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/sdfformer.py", line 145, in forward
+    voxel_features = self.net3d[resname](voxel_features, voxel_dim, res, hash_size=hash_size)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/former_v1.py", line 221, in forward
+    spconv_tensor = self.sp_convs[i](spconv_tensor)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/spconv/pytorch/modules.py", line 141, in forward
+    input = input.replace_feature(module(input.features))
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/sparse3d.py", line 438, in forward
+    output = super().forward(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 168, in forward
+    return F.batch_norm(
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/functional.py", line 2280, in batch_norm
+    _verify_batch_size(input.size())
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/functional.py", line 2248, in _verify_batch_size
+    raise ValueError("Expected more than 1 value per channel when training, got input size {}".format(size))
+ValueError: Expected more than 1 value per channel when training, got input size torch.Size([1, 128])
