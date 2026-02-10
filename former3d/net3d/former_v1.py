@@ -260,10 +260,16 @@ class Former3D(nn.Module):
             pools = torch.cat(pools, dim=1)
             valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
 
+            # 转换pools的shape以便操作
+            # pools: [num_scales, batch, C, D, H, W]
+            num_scales = pools.shape[0]
+            batch_size = pools.shape[1]
+            num_channels = pools.shape[2]
+            features = pools.transpose(0, 1).flatten(1).transpose(0, 1)  # [batch, num_scales*C, D, H, W]
+
             # 关键修复：确保每个batch至少有一个有效特征，避免batch维度被改变
             # valid[:, 0] shape: [batch, D, H, W]
             valid_mask = valid[:, 0]  # [batch, D, H, W]
-            batch_size = valid_mask.shape[0]
 
             # 检查每个batch是否有有效特征
             # 对每个batch在D*H*W维度上检查是否至少有一个True
