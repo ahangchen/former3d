@@ -62,61 +62,50 @@ class PoseProjection(nn.Module):
         inv_current_pose = torch.inverse(current_pose)  # [batch, 4, 4]
         transform = torch.bmm(inv_current_pose, historical_pose)  # [batch, 4, 4]
         
-        # 按批次处理
-        unique_batch_inds = torch.unique(voxel_batch_inds)
-        for batch_idx_tensor in unique_batch_inds:
-            raw_batch_idx = batch_idx_tensor.item()  # 转换为Python整数
-            
-            # 【正确修复】将历史batch_idx归一化到当前batch_size范围
-            # 原因：历史状态可能是在不同batch_size下创建的
-            # 例如：历史状态在batch_size=2时创建，batch_inds=[0,1]
-            #      现在在batch_size=1时使用，需要将batch_idx=1归一化为0
-            batch_idx = raw_batch_idx % batch_size
-            
-            # 安全检查：确保归一化后的batch_idx在有效范围内
-            if batch_idx >= batch_size:
-                print(f"警告：归一化后的batch_idx {batch_idx} 仍超出范围 (batch_size={batch_size})，跳过")
-                continue
-                
-            batch_mask = voxel_batch_inds == batch_idx_tensor
-            if torch.sum(batch_mask) == 0:
-                continue
-                
-            cur_voxel_coords = voxel_coords[batch_mask]  # [n_batch_voxels, 3]
-            
-            # 转换为齐次坐标
-            ones = torch.ones((len(cur_voxel_coords), 1), device=device, dtype=torch.float32)
-            voxel_coords_h = torch.cat([cur_voxel_coords, ones], dim=-1)  # [n_batch_voxels, 4]
-            
-            # 应用变换：历史坐标 = transform @ 当前坐标
-            # 注意：transform[batch_idx] 是 [4, 4]，需要转置以便右乘
-            cur_transform = transform[batch_idx]  # [4, 4]
-            historical_coords_h = torch.mm(voxel_coords_h, cur_transform.t())  # [n_batch_voxels, 4]
-            
-            # 提取3D坐标
-            historical_coords[batch_mask] = historical_coords_h[:, :3]
-            
-            # 检查坐标是否在裁剪范围内
-            # 转换为体素索引
-            historical_voxel_coords = historical_coords_h[:, :3] / self.voxel_size
-            
-            # 检查是否在有效范围内 [0, crop_size-1]
-            in_range_x = (historical_voxel_coords[:, 0] >= 0) & (historical_voxel_coords[:, 0] < self.crop_size[0])
-            in_range_y = (historical_voxel_coords[:, 1] >= 0) & (historical_voxel_coords[:, 1] < self.crop_size[1])
-            in_range_z = (historical_voxel_coords[:, 2] >= 0) & (historical_voxel_coords[:, 2] < self.crop_size[2])
-            
-            mask[batch_mask] = in_range_x & in_range_y & in_range_z
+        # 向量化实现：为每个体素选择对应的变换矩阵
+        # 将batch_inds归一化到当前batch_size范围
+        normalized_batch_inds = voxel_batch_inds % batch_size
+        
+        # 使用gather为每个体素选择对应的变换矩阵
+        # 首先将transform从[batch, 4, 4]转换为[batch, 16]
+        transform_flat = transform.reshape(batch_size, 16)  # [batch, 16]
+        
+        # 为每个体素选择对应的变换矩阵
+        selected_transform_flat = transform_flat[normalized_batch_inds]  # [n_voxels, 16]
+        selected_transform = selected_transform_flat.reshape(n_voxels, 4, 4)  # [n_voxels, 4, 4]
+        
+        # 转换为齐次坐标
+        ones = torch.ones((n_voxels, 1), device=device, dtype=torch.float32)
+        voxel_coords_h = torch.cat([voxel_coords, ones], dim=-1)  # [n_voxels, 4]
+        
+        # 应用变换：历史坐标 = transform @ 当前坐标
+        # 使用批量矩阵乘法
+        historical_coords_h = torch.bmm(voxel_coords_h.unsqueeze(1), selected_transform.transpose(1, 2)).squeeze(1)  # [n_voxels, 4]
+        
+        # 提取3D坐标
+        historical_coords = historical_coords_h[:, :3]
+        
+        # 检查坐标是否在裁剪范围内
+        # 转换为体素索引
+        historical_voxel_coords = historical_coords / self.voxel_size
+        
+        # 检查是否在有效范围内 [0, crop_size-1]
+        in_range_x = (historical_voxel_coords[:, 0] >= 0) & (historical_voxel_coords[:, 0] < self.crop_size[0])
+        in_range_y = (historical_voxel_coords[:, 1] >= 0) & (historical_voxel_coords[:, 1] < self.crop_size[1])
+        in_range_z = (historical_voxel_coords[:, 2] >= 0) & (historical_voxel_coords[:, 2] < self.crop_size[2])
+        
+        mask = in_range_x & in_range_y & in_range_z
         
         return {
             'historical_coords': historical_coords,
-            'batch_inds': voxel_batch_inds,
+            'batch_inds': normalized_batch_inds,
             'mask': mask
         }
     
     def project_sparse_features(self, 
                                historical_features: torch.Tensor,
                                coordinate_mapping: Dict[str, torch.Tensor]) -> torch.Tensor:
-        """投影稀疏特征
+        """投影稀疏特征（向量化实现）
         
         Args:
             historical_features: 历史特征 [num_voxels, channels]
@@ -126,9 +115,7 @@ class PoseProjection(nn.Module):
             投影后的特征 [num_voxels, channels]
         """
         device = historical_features.device
-        historical_coords = coordinate_mapping['historical_coords']
         mask = coordinate_mapping['mask']
-        batch_inds = coordinate_mapping['batch_inds']
         
         n_voxels = len(historical_features)
         channels = historical_features.shape[1]
@@ -141,44 +128,10 @@ class PoseProjection(nn.Module):
         if not torch.any(valid_mask):
             return projected_features
         
-        # 获取有效体素
-        valid_indices = torch.where(valid_mask)[0]
-        valid_historical_coords = historical_coords[valid_mask]
-        valid_batch_inds = batch_inds[valid_mask]
-        
-        # 对于稀疏表示，我们直接使用最近邻或插值
-        # 这里简化处理：使用最近的有效历史特征
-        # 在实际实现中，可能需要更复杂的插值策略
-        
-        # 按批次处理
-        batch_inds_unique = torch.unique(valid_batch_inds)
-        for batch_ind in batch_inds_unique:
-            batch_mask = valid_batch_inds == batch_ind
-            if torch.sum(batch_mask) == 0:
-                continue
-                
-            # 获取当前批次的坐标和特征
-            cur_coords = valid_historical_coords[batch_mask]
-            cur_indices = valid_indices[batch_mask]
-            
-            # 转换为体素索引
-            cur_voxel_indices = (cur_coords / self.voxel_size).long()
-            
-            # 确保在有效范围内
-            cur_voxel_indices[:, 0] = torch.clamp(cur_voxel_indices[:, 0], 0, self.crop_size[0] - 1)
-            cur_voxel_indices[:, 1] = torch.clamp(cur_voxel_indices[:, 1], 0, self.crop_size[1] - 1)
-            cur_voxel_indices[:, 2] = torch.clamp(cur_voxel_indices[:, 2], 0, self.crop_size[2] - 1)
-            
-            # 计算线性索引（用于从密集表示中查找）
-            # 注意：这里假设历史特征是密集表示
-            # 在实际流式系统中，历史状态可能是稀疏的，需要不同的查找策略
-            linear_indices = (cur_voxel_indices[:, 0] * self.crop_size[1] * self.crop_size[2] +
-                            cur_voxel_indices[:, 1] * self.crop_size[2] +
-                            cur_voxel_indices[:, 2])
-            
-            # 对于稀疏表示，直接使用对应的历史特征
-            # 因为坐标变换后，体素位置可能变化不大
-            projected_features[cur_indices] = historical_features[cur_indices]
+        # 对于稀疏表示，直接使用对应的历史特征
+        # 因为坐标变换后，体素位置可能变化不大
+        # 这里简化处理：直接使用原始特征
+        projected_features[valid_mask] = historical_features[valid_mask]
         
         return projected_features
     

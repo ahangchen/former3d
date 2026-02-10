@@ -143,37 +143,25 @@ class StreamSDFFormerIntegrated(SDFFormer):
         # 扩展图像维度 [batch, n_views, 3, H, W]
         rgb_imgs = images.unsqueeze(1)
         
-        # 计算投影矩阵
+        # 计算投影矩阵（批量处理，避免条件判断）
         proj_mats = {}
         cam_positions = torch.zeros(batch_size, n_views, 3, device=device)
-        
+
         for resname in self.resolutions:
             # 构建投影矩阵 [batch, n_views, 4, 4]
-            proj_mat = torch.eye(4, device=device).unsqueeze(0).unsqueeze(0).repeat(batch_size, n_views, 1, 1)
-            
-            # 设置旋转和平移
-            # poses形状可能是 [batch, 4, 4] 或 [batch, n_views, 4, 4]
-            if len(poses.shape) == 3:  # [batch, 4, 4]
-                # 单视图，复制到所有视图
-                proj_mat[:, :, :3, :3] = poses[:, :3, :3].unsqueeze(1)
-                proj_mat[:, :, :3, 3] = poses[:, :3, 3].unsqueeze(1)
-            elif len(poses.shape) == 4:  # [batch, n_views, 4, 4]
-                # 多视图，直接使用
-                proj_mat[:, :, :3, :3] = poses[:, :, :3, :3]
-                proj_mat[:, :, :3, 3] = poses[:, :, :3, 3]
-            else:
-                raise ValueError(f"不支持的poses形状: {poses.shape}")
-            
+            # 原始poses是(batch, 4, 4)，需要扩展为(batch, 1, 4, 4)以匹配n_views维度
+            proj_mat = poses.unsqueeze(1).expand(batch_size, n_views, 4, 4)
+
             # 确保投影矩阵在正确的设备上
             proj_mat = proj_mat.to(device)
             proj_mats[resname] = proj_mat
-        
+
         # 设置原点（如果未提供）
         if origin is None:
             origin = torch.zeros(batch_size, 3, device=device)
         else:
             origin = origin.to(device)
-        
+
         # 确保cam_positions在正确的设备上
         cam_positions = cam_positions.to(device)
         
@@ -218,25 +206,24 @@ class StreamSDFFormerIntegrated(SDFFormer):
         ]
         
         print(f"体素网格大小: {voxel_grid_size}")
-        
-        # 生成随机体素索引（确保在网格范围内）
-        voxel_inds_list = []
-        for batch_idx in range(batch_size):
-            # 为每个批次生成体素索引
-            for _ in range(num_voxels_per_batch):
-                x = torch.randint(0, voxel_grid_size[0], (1,), device=device)
-                y = torch.randint(0, voxel_grid_size[1], (1,), device=device)
-                z = torch.randint(0, voxel_grid_size[2], (1,), device=device)
-                b = torch.tensor([batch_idx], device=device)
-                
-                voxel_ind = torch.cat([x, y, z, b])
-                voxel_inds_list.append(voxel_ind)
-        
-        voxel_inds = torch.stack(voxel_inds_list)
-        
+
+        # 生成随机体素索引（向量化实现，避免遍历batch_idx）
+        # 为所有batch的体素生成索引
+        # x, y, z: [total_voxels, 1]
+        x = torch.randint(0, voxel_grid_size[0], (total_voxels, 1), device=device)
+        y = torch.randint(0, voxel_grid_size[1], (total_voxels, 1), device=device)
+        z = torch.randint(0, voxel_grid_size[2], (total_voxels, 1), device=device)
+
+        # 生成batch索引（正确的批量处理）
+        # [batch0_0, batch0_1, ..., batch0_num-1, batch1_0, ..., batch1_num-1, ...]
+        batch_inds = torch.arange(batch_size, device=device).unsqueeze(1).repeat(1, num_voxels_per_batch).reshape(total_voxels, 1)
+
+        # 拼接: [total_voxels, 4] (x, y, z, batch_idx)
+        voxel_inds = torch.cat([x, y, z, batch_inds], dim=1)
+
         # 转换为int32类型（spconv要求）
         voxel_inds = voxel_inds.to(torch.int32)
-        
+
         return voxel_inds
     
     def extract_historical_features(self, 
