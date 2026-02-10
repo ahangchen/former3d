@@ -166,7 +166,8 @@ def create_dataloader(args, device):
             batch_size=args.batch_size,
             shuffle=True,
             num_workers=args.num_workers,
-            pin_memory=True if device.type == 'cuda' else False
+            pin_memory=True if device.type == 'cuda' else False,
+            collate_fn=MultiSequenceTartanAirDataset.collate_fn
         )
         
         logger.info(f"✅ 数据加载器创建成功，批次大小: {args.batch_size}")
@@ -383,21 +384,26 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         # 获取序列信息
         batch_size = batch['rgb_images'].shape[0]
         sequence_length = batch['rgb_images'].shape[1]
-        
+
+        # 调试：在赋值前打印原始batch shape
+        if batch_idx == 0:
+            logger.info(f"Raw batch - images shape: {batch['rgb_images'].shape}, poses shape: {batch['poses'].shape}, intrinsics shape: {batch['intrinsics'].shape}")
+
         # 直接将整个batch喂给模型的forward_sequence
         # batch['rgb_images']: (batch, n_view, 3, H, W)
         # batch['poses']: (batch, n_view, 4, 4)
-        # batch['intrinsics']: (batch, n_view, 3, 3) - 注意：intrinsics的shape需要调整
+        # batch['intrinsics']: (batch, n_view, 3, 3)
         images = batch['rgb_images']  # (batch, n_view, 3, H, W)
         poses = batch['poses']  # (batch, n_view, 4, 4)
-        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3) - 需要扩展
+        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3)
 
-        # 扩展intrinsics到正确的维度：从(batch, 3, 3)到(batch, n_view, 3, 3)
-        if len(intrinsics.shape) == 3:  # (batch, 3, 3)
-            intrinsics = intrinsics.unsqueeze(1).expand(-1, sequence_length, -1, -1)  # (batch, n_view, 3, 3)
+        # 调试：打印赋值后的shape
+        if batch_idx == 0:
+            logger.info(f"Batch {batch_idx}: images shape={images.shape}, poses shape={poses.shape}, intrinsics shape={intrinsics.shape}")
 
         # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
         outputs, states = model.forward_sequence(images, poses, intrinsics)
+
 
         # 计算损失（整个序列的损失）
         # batch['tsdf']: (batch, 1, D, H, W)
@@ -504,24 +510,24 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
                     batch[key] = batch[key].to(device)
         
         # 获取序列信息
+        # 获取序列信息
         batch_size = batch['rgb_images'].shape[0]
         sequence_length = batch['rgb_images'].shape[1]
-        
+
         # 直接将整个batch喂给模型的forward_sequence
         # batch['rgb_images']: (batch, n_view, 3, H, W)
         # batch['poses']: (batch, n_view, 4, 4)
-        # batch['intrinsics']: (batch, n_view, 3, 3) - 注意：intrinsics的shape需要调整
+        # batch['intrinsics']: (batch, n_view, 3, 3)
         images = batch['rgb_images']  # (batch, n_view, 3, H, W)
         poses = batch['poses']  # (batch, n_view, 4, 4)
-        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3) - 需要扩展
-        
-        # 扩展intrinsics到正确的维度：从(batch, 3, 3)到(batch, n_view, 3, 3)
-        if len(intrinsics.shape) == 3:  # (batch, 3, 3)
-            intrinsics = intrinsics.unsqueeze(1).expand(-1, sequence_length, -1, -1)  # (batch, n_view, 3, 3)
-        
+        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3)
+
+        # 调试：打印shape
+        if batch_idx == 0:
+            logger.info(f"Validation Batch {batch_idx}: images shape={images.shape}, poses shape={poses.shape}, intrinsics shape={intrinsics.shape}")
+
         # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
         outputs, states = model.forward_sequence(images, poses, intrinsics)
-        
         # 计算损失（整个序列的损失）
         # batch['tsdf']: (batch, 1, D, H, W)
         # outputs: (batch, n_view, ...)

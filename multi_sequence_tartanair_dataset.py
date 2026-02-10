@@ -363,9 +363,10 @@ class MultiSequenceTartanAirDataset(Dataset):
         occupancy = torch.from_numpy(tsdf_data['occupancy']).float().unsqueeze(0).unsqueeze(0)  # (1, 1, D, H, W) ← 添加维度
         voxel_coords = torch.from_numpy(tsdf_data['voxel_coords']).float()
         
-        # 内参
-        intrinsics = torch.from_numpy(self.K).float()
-        intrinsics = intrinsics.unsqueeze(0)  # (1, 3, 3) ← 添加维度
+        # 内参（扩展到n_view维度，保持与其他字段一致的shape）
+        intrinsics = torch.from_numpy(self.K).float()  # (3, 3)
+        intrinsics = intrinsics.unsqueeze(0).unsqueeze(0)  # (1, 1, 3, 3)
+        intrinsics = intrinsics.expand(1, self.n_view, 3, 3)  # (1, n_view, 3, 3) ← 扩展到n_view维度
         
         return {
             'rgb_images': rgb_images,      # (1, n_view, 3, H, W)
