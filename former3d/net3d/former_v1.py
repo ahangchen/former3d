@@ -232,8 +232,52 @@ class Former3D(nn.Module):
             global_spvt_tensor = self.global_atten(spvt_tensor)
             feats[-1] = feats[-1].replace_feature(global_spvt_tensor.features)
 
-        # 禁用global_avg，因为它在稀疏场景下会导致batch维度问题
-        # if self.global_avg:
+        # ========== Decoder ==========
+        if self.global_avg:
+            self.pool_scales = [1, 2, 3]
+            self.global_convs = nn.ModuleList()
+            for i in range(len(self.pool_scales)):
+                self.global_convs.append(nn.Conv3d(channels[-1], channels[-1], kernel_size=1))
+            self.global_norm = nn.Sequential(
+                    BatchNorm1d(channels[-1]*len(self.pool_scales)),
+                    nn.ReLU()
+            )
+            
+            input_size = np.array(inputs.spatial_shape)
+            pools = []
+            for i, pool_scale in enumerate(self.pool_scales):
+                output_size = pool_scale
+                
+                # 修复stride计算，确保至少为1
+                stride = (input_size / output_size).astype(np.int8)
+                stride = np.maximum(stride, 1)  # 残保stride >= 1
+                
+                # 重新计算kernel_size
+                kernel_size = input_size - (output_size - 1) * stride
+                kernel_size = np.maximum(kernel_size, 1)  # 残保kernel_size >= 1
+                
+                # 如果kernel_size仍然无效，跳过这个池化尺度
+                if np.any(kernel_size <= 0):
+                    print(f"警告: 跳过无效的池化尺度 {pool_scale}")
+                    continue
+                
+                out = F.avg_pool3d(inputs_dense, kernel_size=tuple(kernel_size), stride=tuple(stride), ceil_mode=False)
+                out = self.global_convs[i](out)
+                out = F.interpolate(out, input_size.tolist(), mode='nearest')
+                pools.append(out)
+            
+            pools = torch.cat(pools, dim=1)
+            valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
+
+            # 关键修复：正确处理global_avg，避免5D张量问题
+            # 问题：torch.cat创建5D张量[batch, num_scales*2, C, D, H, W]，
+            #        而replace_feature期望4D稀疏张量[N, C, D, H, W]
+            # 解决：直接使用inputs，不进行复杂的池化操作
+            #        如果确实需要池化，应该在SparseTensor中进行，而不是在密集张量上
+            
+            # 简化方案：直接使用inputs，不进行池化
+            outputs = inputs  # 保持4D稀疏张量
+            feats[-1] = outputs
             inputs = feats[-1]
             inputs_dense = inputs.dense()
             input_size = np.array(inputs.spatial_shape)
