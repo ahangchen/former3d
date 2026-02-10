@@ -1,0 +1,122 @@
+2026-02-10 13:56:23,367 - __main__ - INFO - ✅ 设备一致性工具导入成功
+2026-02-10 13:56:23,367 - __main__ - INFO - ✅ 显存分析工具导入成功
+2026-02-10 13:56:23,557 - __main__ - INFO - ✅ MultiSequenceTartanAirDataset导入成功
+2026-02-10 13:56:23,558 - __main__ - INFO - ✅ StreamStateManager导入成功
+2026-02-10 13:56:25,405 - __main__ - INFO - ✅ StreamSDFFormerIntegrated导入成功
+2026-02-10 13:56:25,405 - __main__ - INFO - ✅ MemoryManager导入成功
+2026-02-10 13:56:25,406 - __main__ - INFO - 使用单GPU模式，设备: cuda:0
+2026-02-10 13:56:25,406 - __main__ - INFO - 参数: Namespace(accumulation_steps=1, attn_heads=1, attn_layers=1, batch_size=2, cleanup_freq=10, crop_size='8,8,6', data_root='/home/cwh/Study/dataset/tartanair', debug=False, device='cuda:0', dry_run=False, enable_memory_profile=False, epochs=1, gpu_ids=None, learning_rate=0.0001, max_sequences=10, memory_profile_output='memory_profile', memory_threshold=8.0, multi_gpu=False, no_cuda=False, num_workers=2, sequence_length=5, test_only=False, voxel_size=0.25)
+2026-02-10 13:56:25,407 - __main__ - INFO - 创建StreamSDFFormerIntegrated模型...
+2026-02-10 13:56:27,920 - __main__ - INFO - 使用单GPU/CPU训练
+2026-02-10 13:56:27,922 - __main__ - INFO - ✅ 模型创建成功，参数数量: 29913919
+2026-02-10 13:56:27,926 - __main__ - INFO -    注意力头数: 1
+2026-02-10 13:56:27,926 - __main__ - INFO -    注意力层数: 1
+2026-02-10 13:56:27,926 - __main__ - INFO -    体素大小: 0.25
+2026-02-10 13:56:27,926 - __main__ - INFO -    裁剪尺寸: (8, 8, 6)
+2026-02-10 13:56:27,927 - __main__ - INFO - 创建MultiSequenceTartanAirDataset...
+2026-02-10 13:56:27,935 - __main__ - INFO - ✅ 数据集创建成功，样本数: 808
+2026-02-10 13:56:27,935 - __main__ - INFO - ✅ 数据加载器创建成功，批次大小: 2
+2026-02-10 13:56:27,935 - __main__ - INFO - 开始训练...
+2026-02-10 13:56:27,936 - __main__ - INFO - 开始第 1/1 轮训练
+2026-02-10 13:56:27,938 - stream_state_manager - INFO - 初始化StreamStateManager，设备: cuda:0，最大缓存状态: 5
+2026-02-10 13:56:27,938 - memory_manager - INFO - 初始化内存管理器 - 清理频率: 10步, 显存阈值: 8.0GB
+初始化StreamSDFFormerIntegrated:
+  - 体素大小: 0.25
+  - 裁剪空间: (8, 8, 6)
+  - 融合半径: 2.0
+  - 使用投影占用: False
+发现 2 个序列:
+  - abandonedfactory_sample_P001: 434 帧
+  - gascola_sample_P001: 382 帧
+多序列TartanAir数据集初始化完成:
+  总序列数: 2
+  总片段数: 808
+  片段长度: 5 帧
+  片段步长: 1
+  裁剪尺寸: (8, 8, 6) 体素
+  体素大小: 0.25米
+  图像大小: (256, 256)
+2026-02-10 13:56:28,152 - __main__ - INFO - Raw batch - images shape: torch.Size([2, 5, 3, 256, 256]), poses shape: torch.Size([2, 5, 4, 4]), intrinsics shape: torch.Size([2, 5, 3, 3])
+2026-02-10 13:56:28,152 - __main__ - INFO - Batch 0: images shape=torch.Size([2, 5, 3, 256, 256]), poses shape=torch.Size([2, 5, 4, 4]), intrinsics shape=torch.Size([2, 5, 3, 3])
+/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/functional.py:445: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at  ../aten/src/ATen/native/TensorShape.cpp:2157.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+2026-02-10 13:56:28,470 - __main__ - ERROR - 训练过程中发生异常: expected 2D or 3D input (got 5D input)
+Traceback (most recent call last):
+  File "train_stream_integrated.py", line 907, in main
+    train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+  File "train_stream_integrated.py", line 485, in train_epoch_stream
+    outputs, states = model.forward_sequence(images, poses, intrinsics)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 682, in forward_sequence
+    output_t, state_t = self.forward_single_frame(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 305, in forward_single_frame
+    voxel_outputs, proj_occ_logits, bp_data = super().forward(batch, voxel_inds_16)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/sdfformer.py", line 145, in forward
+    voxel_features = self.net3d[resname](voxel_features, voxel_dim, res, hash_size=hash_size)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/former_v1.py", line 285, in forward
+    outputs = inputs.replace_feature(torch.cat([inputs.features, self.global_norm(inputs_dense)], dim=1))
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/container.py", line 141, in forward
+    input = module(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/sparse3d.py", line 438, in forward
+    output = super().forward(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 135, in forward
+    self._check_input_dim(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 299, in _check_input_dim
+    raise ValueError(
+ValueError: expected 2D or 3D input (got 5D input)
+重置历史状态
+体素网格大小: [8, 8, 6]
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+!!!!!!!! not fp16
+Traceback (most recent call last):
+  File "train_stream_integrated.py", line 946, in <module>
+    main()
+  File "train_stream_integrated.py", line 907, in main
+    train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+  File "train_stream_integrated.py", line 485, in train_epoch_stream
+    outputs, states = model.forward_sequence(images, poses, intrinsics)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 682, in forward_sequence
+    output_t, state_t = self.forward_single_frame(
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/stream_sdfformer_integrated.py", line 305, in forward_single_frame
+    voxel_outputs, proj_occ_logits, bp_data = super().forward(batch, voxel_inds_16)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/sdfformer.py", line 145, in forward
+    voxel_features = self.net3d[resname](voxel_features, voxel_dim, res, hash_size=hash_size)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/former_v1.py", line 285, in forward
+    outputs = inputs.replace_feature(torch.cat([inputs.features, self.global_norm(inputs_dense)], dim=1))
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/container.py", line 141, in forward
+    input = module(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/module.py", line 1102, in _call_impl
+    return forward_call(*input, **kwargs)
+  File "/home/cwh/ubuntu18/home/ubuntu/coding/former3d/former3d/net3d/sparse3d.py", line 438, in forward
+    output = super().forward(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 135, in forward
+    self._check_input_dim(input)
+  File "/home/cwh/miniconda3/envs/former3d/lib/python3.8/site-packages/torch/nn/modules/batchnorm.py", line 299, in _check_input_dim
+    raise ValueError(
+ValueError: expected 2D or 3D input (got 5D input)

@@ -232,7 +232,8 @@ class Former3D(nn.Module):
             global_spvt_tensor = self.global_atten(spvt_tensor)
             feats[-1] = feats[-1].replace_feature(global_spvt_tensor.features)
 
-        if self.global_avg:
+        # 禁用global_avg，因为它在稀疏场景下会导致batch维度问题
+        # if self.global_avg:
             inputs = feats[-1]
             inputs_dense = inputs.dense()
             input_size = np.array(inputs.spatial_shape)
@@ -260,30 +261,80 @@ class Former3D(nn.Module):
             pools = torch.cat(pools, dim=1)
             valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
 
-            # 关键修复：确保每个batch至少有一个有效特征，避免batch维度被改变
-            # valid[:, 0] shape: [batch, D, H, W]
-            valid_mask = valid[:, 0]  # [batch, D, H, W]
-            batch_size = valid_mask.shape[0]
-            spatial_size = valid_mask.shape[1] * valid_mask.shape[2] * valid_mask.shape[3]
-
-            # 检查每个batch是否有有效特征
-            # 对每个batch在D*H*W维度上检查是否至少有一个True
-            valid_per_batch = valid_mask.view(batch_size, -1).any(dim=1)  # [batch] - 每个batch是否至少有一个有效体素
-
-            # 对于没有有效特征的batch，强制标记第一个空间位置为有效
-            for b in range(batch_size):
-                if not valid_per_batch[b]:
-                    # 计算第一个空间位置的索引
-                    spatial_idx = b * spatial_size
-                    # 强制第一个位置为有效
-                    valid_mask.view(-1)[spatial_idx] = True
-
-            # 确保valid_features与pools的shape一致
-            # pools: [num_scales, batch, C, D, H, W]
-            # 我们需要对每个batch至少保留一个特征
-            # 最简单的方法：不使用valid mask，而是直接使用所有pools
-            outputs = inputs.replace_feature(torch.cat([inputs.features, self.global_norm(inputs_dense)], dim=1))
-            feats[-1] = outputs
+            # 关键修复：正确处理global_avg，避免5D张量问题
+            # 问题：torch.cat创建5D张量，BatchNorm只接受2D/3D/4D（NCHW）
+            # 解决：不使用torch.cat，直接逐个处理每个pool_scale
+            if self.global_avg:
+                # 逐个处理每个pool_scale的特征，最后平均
+                global_feats_list = []
+                for pool in pools:
+                    # 对每个pool应用global_norm，得到4D稀疏张量
+                    pool_norm = self.global_norm(pool)
+                    # 使用replace_feature更新
+                    inputs = inputs.replace_feature(pool_norm)
+                    # 使用新的inputs计算后续特征
+                    # 简化：使用池化后的第一个scale的features作为输出
+                    # 这里需要正确处理4D稀疏张量
+                    global_feats_list.append(pool_norm.features)  # [N, C]
+                
+                # 平均所有scale的特征
+                if global_feats_list:
+                    # 每个scale的特征数量可能不同，取第一个scale的batch维度
+                    batch_size = global_feats_list[0].shape[0]
+                    # 将所有scale的特征填充到相同长度
+                    max_len = max(gf.shape[1] for gf in global_feats_list)
+                    padded_feats = []
+                    for gf in global_feats_list:
+                        # 如果长度不足，用零填充
+                        if gf.shape[1] < max_len:
+                            pad_size = max_len - gf.shape[1]
+                            padding = torch.zeros(gf.shape[0], pad_size, gf.shape[2], device=gf.device)
+                            padded = torch.cat([gf, padding], dim=1)
+                        else:
+                            padded = gf
+                        padded_feats.append(padded)
+                    
+                    # 堆叠并平均：[batch, max_len, C]
+                    stacked_feats = torch.stack(padded_feats, dim=0)
+                    # 平均：[batch, C]
+                    global_feats = stacked_feats.mean(dim=1)
+                    # 重构为4D稀疏张量：[N*C, 1] -> [N, 1, C, 1]
+                    N = global_feats.shape[0] * global_feats.shape[1]
+                    C = global_feats.shape[2]
+                    # 使用inputs的spatial结构作为参考
+                    if len(inputs.spatial_shape) == 3:
+                        D, H, W = inputs.spatial_shape
+                    else:
+                        H, W = inputs.spatial_shape
+                        D = 1
+                    
+                    # 创建4D稀疏张量
+                    # indices: [N, 4]，features: [N, C]
+                    indices = inputs.indices.repeat_interleave(global_feats.shape[2]).view(-1, 4)
+                    global_feats_4d = global_feats.view(-1, 1).repeat(1, C).view(-1, 1)
+                    
+                    # 创建稀疏张量
+                    from spconv import SparseConvTensor
+                    global_sparse = SparseConvTensor(
+                        features=global_feats_4d,
+                        indices=indices,
+                        spatial_shape=[D, H, W],
+                        batch_size=inputs.batch_size,
+                        hash_size=inputs.hash_size,
+                        voxel_size=inputs.voxel_size,
+                        point_cloud_range=inputs.point_cloud_range,
+                        indice_dict=None
+                    )
+                    
+                    outputs = inputs.replace_feature(global_sparse)
+                else:
+                    # 如果没有特征，直接使用inputs
+                    outputs = inputs
+                
+                feats[-1] = outputs
+            else:
+                # 不使用global_avg，直接使用inputs
+                outputs = inputs
         
         x = None
         for i in range(len(feats)-1, 0, -1):
