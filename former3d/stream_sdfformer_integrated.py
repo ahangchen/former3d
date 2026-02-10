@@ -20,7 +20,7 @@ from former3d.net3d.sparse3d import combineSparseConvTensor, xyzb2bxyz, bxyz2xyz
 
 # 导入Phase 1的流式组件
 from former3d.pose_projection import PoseProjection
-from former3d.stream_fusion import StreamCrossAttention
+from former3d.stream_fusion_concat import StreamConcatFusion
 
 
 class StreamSDFFormerIntegrated(SDFFormer):
@@ -65,11 +65,12 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.feature_expansion = nn.Linear(1, 128) if not use_proj_occ else nn.Identity()
         self.feature_compression = nn.Linear(128, 1) if not use_proj_occ else nn.Identity()
 
-        self.stream_fusion = StreamCrossAttention(
+        # 使用concat融合替代注意力融合，大幅节省显存
+        self.stream_fusion = StreamConcatFusion(
             feature_dim=128,  # 扩展后的特征维度
-            num_heads=4,
-            local_radius=fusion_local_radius,
-            use_checkpoint=use_checkpoint
+            hidden_dim=256,  # 隐藏层维度
+            use_residual=True,
+            dropout=0.1
         )
         self.stream_fusion_enabled = True  # 启用流式融合
 
@@ -402,22 +403,20 @@ class StreamSDFFormerIntegrated(SDFFormer):
         historical_feats = historical_features['features']
         historical_coords = historical_features['coords']
         historical_batch_inds = historical_features['batch_inds']
-        
-        # 执行流式融合
-        # 注意：StreamCrossAttention只需要坐标，不需要批次索引
+
+        # 执行流式融合（使用concat替代注意力，大幅节省显存）
         # 检查特征维度是否匹配
         if current_feats.shape[1] == historical_feats.shape[1] == 128:
+            # Concat融合不需要坐标，只使用特征
             fused_features = self.stream_fusion(
                 current_feats=current_feats,
-                historical_feats=historical_feats,
-                current_coords=current_coords,
-                historical_coords=historical_coords
+                historical_feats=historical_feats
             )
         else:
             # 特征维度不匹配，跳过流式融合
             print(f"⚠️ 特征维度不匹配，跳过流式融合: current={current_feats.shape}, historical={historical_feats.shape}")
             fused_features = current_feats
-        
+
         return fused_features
     
     def _update_voxel_outputs(self, voxel_outputs: Dict, fused_features: torch.Tensor) -> Dict:
