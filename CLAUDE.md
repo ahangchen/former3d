@@ -19,4 +19,3 @@ Programming Guidelines
 
 13. **Batch Size Guidelines**:
     - **Batch Size 2 (Multi-GPU)**: Recommended when sufficient GPU memory is available (>8GB per GPU). Requires larger crop_size and proper voxel_size settings.
-    - **Batch Size 1 (Single-GPU)**: Use when GPU memory is limited (<8GB). Requires modifying 3D network BatchNorm → InstanceNorm to support batch_size=1.
