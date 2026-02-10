@@ -17,10 +17,6 @@ Programming Guidelines
 
 ## Memory Management and Training Configuration
 
-11. **Memory Analysis Required**: Before training with new configurations, always run memory profiling with `--enable-memory-profile` flag. Analyze results using `analyze_memory.py` to identify bottlenecks.
-
-12. **StreamFusion Optimization**: Use concat + MLP fusion (`StreamConcatFusion`) instead of attention mechanisms to reduce memory usage by 99%. This is critical for batch_size=2 training.
-
 13. **Batch Size Guidelines**:
     - **Batch Size 2 (Multi-GPU)**: Recommended when sufficient GPU memory is available (>8GB per GPU). Requires larger crop_size and proper voxel_size settings.
     - **Batch Size 1 (Single-GPU)**: Use when GPU memory is limited (<8GB). Requires modifying 3D network BatchNorm → InstanceNorm to support batch_size=1.
