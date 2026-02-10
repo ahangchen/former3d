@@ -116,7 +116,7 @@ class Former3D(nn.Module):
             for i in range(len(self.pool_scales)):
                 self.global_convs.append(nn.Conv3d(channels[-1], channels[-1], kernel_size=1))
             self.global_norm = nn.Sequential(
-                    BatchNorm1d(channels[-1]*len(self.pool_scales)),
+                    BatchNorm3d(channels[-1]*len(self.pool_scales)),
                     nn.ReLU(True))
 
         if self.global_tf == True:
@@ -234,151 +234,52 @@ class Former3D(nn.Module):
 
         # ========== Decoder ==========
         if self.global_avg:
-            self.pool_scales = [1, 2, 3]
-            self.global_convs = nn.ModuleList()
-            for i in range(len(self.pool_scales)):
-                self.global_convs.append(nn.Conv3d(channels[-1], channels[-1], kernel_size=1))
-            self.global_norm = nn.Sequential(
-                    BatchNorm1d(channels[-1]*len(self.pool_scales)),
-                    nn.ReLU()
-            )
-            
-            input_size = np.array(inputs.spatial_shape)
-            pools = []
-            for i, pool_scale in enumerate(self.pool_scales):
-                output_size = pool_scale
-                
-                # 修复stride计算，确保至少为1
-                stride = (input_size / output_size).astype(np.int8)
-                stride = np.maximum(stride, 1)  # 残保stride >= 1
-                
-                # 重新计算kernel_size
-                kernel_size = input_size - (output_size - 1) * stride
-                kernel_size = np.maximum(kernel_size, 1)  # 残保kernel_size >= 1
-                
-                # 如果kernel_size仍然无效，跳过这个池化尺度
-                if np.any(kernel_size <= 0):
-                    print(f"警告: 跳过无效的池化尺度 {pool_scale}")
-                    continue
-                
-                out = F.avg_pool3d(inputs_dense, kernel_size=tuple(kernel_size), stride=tuple(stride), ceil_mode=False)
-                out = self.global_convs[i](out)
-                out = F.interpolate(out, input_size.tolist(), mode='nearest')
-                pools.append(out)
-            
-            pools = torch.cat(pools, dim=1)
-            valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
-
-            # 关键修复：正确处理global_avg，避免5D张量问题
-            # 问题：torch.cat创建5D张量[batch, num_scales*2, C, D, H, W]，
-            #        而replace_feature期望4D稀疏张量[N, C, D, H, W]
-            # 解决：直接使用inputs，不进行复杂的池化操作
-            #        如果确实需要池化，应该在SparseTensor中进行，而不是在密集张量上
-            
-            # 简化方案：直接使用inputs，不进行池化
-            outputs = inputs  # 保持4D稀疏张量
-            feats[-1] = outputs
             inputs = feats[-1]
             inputs_dense = inputs.dense()
             input_size = np.array(inputs.spatial_shape)
+
+            # 多尺度池化
             pools = []
             for i, pool_scale in enumerate(self.pool_scales):
                 output_size = pool_scale
-                
-                # 修复stride计算，确保至少为1
+
+                # 计算stride和kernel_size
                 stride = (input_size / output_size).astype(np.int8)
-                stride = np.maximum(stride, 1)  # 确保stride >= 1
-                
-                # 重新计算kernel_size
+                stride = np.maximum(stride, 1)
                 kernel_size = input_size - (output_size - 1) * stride
-                kernel_size = np.maximum(kernel_size, 1)  # 确保kernel_size >= 1
-                
-                # 如果kernel_size仍然无效，跳过这个池化尺度
+                kernel_size = np.maximum(kernel_size, 1)
+
+                # 如果kernel_size无效，跳过这个尺度
                 if np.any(kernel_size <= 0):
                     print(f"警告: 跳过无效的池化尺度 {pool_scale}")
                     continue
-                
-                out = F.avg_pool3d(inputs_dense, kernel_size=tuple(kernel_size), stride=tuple(stride), ceil_mode=False)
+
+                # 池化 -> 卷积 -> 上采样
+                out = F.avg_pool3d(inputs_dense, kernel_size=tuple(kernel_size),
+                                   stride=tuple(stride), ceil_mode=False)
                 out = self.global_convs[i](out)
                 out = F.interpolate(out, input_size.tolist(), mode='nearest')
                 pools.append(out)
-            pools = torch.cat(pools, dim=1)
-            valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
 
-            # 关键修复：正确处理global_avg，避免5D张量问题
-            # 问题：torch.cat创建5D张量，BatchNorm只接受2D/3D/4D（NCHW）
-            # 解决：不使用torch.cat，直接逐个处理每个pool_scale
-            if self.global_avg:
-                # 逐个处理每个pool_scale的特征，最后平均
-                global_feats_list = []
-                for pool in pools:
-                    # 对每个pool应用global_norm，得到4D稀疏张量
-                    pool_norm = self.global_norm(pool)
-                    # 使用replace_feature更新
-                    inputs = inputs.replace_feature(pool_norm)
-                    # 使用新的inputs计算后续特征
-                    # 简化：使用池化后的第一个scale的features作为输出
-                    # 这里需要正确处理4D稀疏张量
-                    global_feats_list.append(pool_norm.features)  # [N, C]
-                
-                # 平均所有scale的特征
-                if global_feats_list:
-                    # 每个scale的特征数量可能不同，取第一个scale的batch维度
-                    batch_size = global_feats_list[0].shape[0]
-                    # 将所有scale的特征填充到相同长度
-                    max_len = max(gf.shape[1] for gf in global_feats_list)
-                    padded_feats = []
-                    for gf in global_feats_list:
-                        # 如果长度不足，用零填充
-                        if gf.shape[1] < max_len:
-                            pad_size = max_len - gf.shape[1]
-                            padding = torch.zeros(gf.shape[0], pad_size, gf.shape[2], device=gf.device)
-                            padded = torch.cat([gf, padding], dim=1)
-                        else:
-                            padded = gf
-                        padded_feats.append(padded)
-                    
-                    # 堆叠并平均：[batch, max_len, C]
-                    stacked_feats = torch.stack(padded_feats, dim=0)
-                    # 平均：[batch, C]
-                    global_feats = stacked_feats.mean(dim=1)
-                    # 重构为4D稀疏张量：[N*C, 1] -> [N, 1, C, 1]
-                    N = global_feats.shape[0] * global_feats.shape[1]
-                    C = global_feats.shape[2]
-                    # 使用inputs的spatial结构作为参考
-                    if len(inputs.spatial_shape) == 3:
-                        D, H, W = inputs.spatial_shape
-                    else:
-                        H, W = inputs.spatial_shape
-                        D = 1
-                    
-                    # 创建4D稀疏张量
-                    # indices: [N, 4]，features: [N, C]
-                    indices = inputs.indices.repeat_interleave(global_feats.shape[2]).view(-1, 4)
-                    global_feats_4d = global_feats.view(-1, 1).repeat(1, C).view(-1, 1)
-                    
-                    # 创建稀疏张量
-                    from spconv import SparseConvTensor
-                    global_sparse = SparseConvTensor(
-                        features=global_feats_4d,
-                        indices=indices,
-                        spatial_shape=[D, H, W],
-                        batch_size=inputs.batch_size,
-                        hash_size=inputs.hash_size,
-                        voxel_size=inputs.voxel_size,
-                        point_cloud_range=inputs.point_cloud_range,
-                        indice_dict=None
-                    )
-                    
-                    outputs = inputs.replace_feature(global_sparse)
-                else:
-                    # 如果没有特征，直接使用inputs
-                    outputs = inputs
-                
-                feats[-1] = outputs
-            else:
-                # 不使用global_avg，直接使用inputs
-                outputs = inputs
+            # 拼接所有池化尺度的特征: [batch, num_scales*C, D, H, W]
+            pools = torch.cat(pools, dim=1)
+
+            # 应用BatchNorm3d处理5D张量（关键修复）
+            pools_norm = self.global_norm(pools)
+
+            # 将归一化的dense特征转换回稀疏张量
+            # valid标记非零体素位置
+            valid = ~((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
+
+            # 从归一化的dense中提取有效体素的特征
+            # 将valid广播到pools_norm的通道维度
+            valid_expanded = valid.expand_as(pools_norm)
+            # 筛选出有效体素的特征
+            valid_pools = pools_norm[valid_expanded].view(-1, pools_norm.shape[1])  # [N_valid, num_scales*C]
+
+            # 更新稀疏张量的特征
+            outputs = inputs.replace_feature(valid_pools)
+            feats[-1] = outputs
         
         x = None
         for i in range(len(feats)-1, 0, -1):
