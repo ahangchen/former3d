@@ -258,30 +258,29 @@ class Former3D(nn.Module):
                 out = F.interpolate(out, input_size.tolist(), mode='nearest')
                 pools.append(out)
             pools = torch.cat(pools, dim=1)
-            valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))
-
-            valid = valid.transpose(0, 1).flatten(1).transpose(0, 1)
-            features = pools.transpose(0, 1).flatten(1).transpose(0, 1)
+            valid = ~ ((inputs_dense == 0).all(1).unsqueeze(1))  # [batch, 1, D, H, W]
 
             # 关键修复：确保每个batch至少有一个有效特征，避免batch维度被改变
-            valid_mask = valid[:, 0]  # [batch, D*H*W]
+            # valid[:, 0] shape: [batch, D, H, W]
+            valid_mask = valid[:, 0]  # [batch, D, H, W]
             batch_size = valid_mask.shape[0]
 
             # 检查每个batch是否有有效特征
-            valid_per_batch = valid_mask.any(dim=1)  # [batch] - 每个batch是否至少有一个有效体素
+            # 对每个batch在D*H*W维度上检查是否至少有一个True
+            valid_per_batch = valid_mask.view(batch_size, -1).any(dim=1)  # [batch] - 每个batch是否至少有一个有效体素
 
             # 对于没有有效特征的batch，强制标记第一个位置为有效
             for b in range(batch_size):
                 if not valid_per_batch[b]:
                     # 这个batch的所有体素都是无效的，强制第一个位置为有效
-                    valid_mask[b, 0] = True
+                    valid_mask[b, 0, 0, 0] = True
                     # 如果features中这个位置也是0，设置为0.1避免除零错误
                     if features[b, 0] == 0:
                         features[b, 0] = 0.1
 
             # 提取有效特征（现在确保每个batch至少有一个）
-            valid_indices = torch.nonzero(valid_mask).squeeze(1)
-            valid_features = features[valid_indices]
+            valid_indices = torch.nonzero(valid_mask)  # shape: [N, 4] where N >= batch_size
+            valid_features = features[valid_indices[:, 0], valid_indices[:, 1], valid_indices[:, 2], valid_indices[:, 3]]
 
             # 重新构造batch维度一致的输出
             outputs = inputs.replace_feature(torch.cat([inputs.features, self.global_norm(valid_features)], dim=1))
