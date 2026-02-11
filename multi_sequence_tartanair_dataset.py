@@ -105,36 +105,49 @@ class MultiSequenceTartanAirDataset(Dataset):
     def _discover_sequences(self) -> List[Dict]:
         """发现所有可用的序列"""
         sequences = []
-        
+
         # 遍历data_root下的所有目录
         for item in os.listdir(self.data_root):
             item_path = os.path.join(self.data_root, item)
             if os.path.isdir(item_path):
-                # 检查是否是序列目录（包含P001子目录）
-                p001_path = os.path.join(item_path, "P001")
-                if os.path.exists(p001_path):
-                    # 检查必要的子目录
-                    rgb_dir = os.path.join(p001_path, "image_left")
-                    depth_dir = os.path.join(p001_path, "depth_left")
-                    pose_file = os.path.join(p001_path, "pose_left.txt")
-                    
-                    if (os.path.exists(rgb_dir) and 
-                        os.path.exists(depth_dir) and 
-                        os.path.exists(pose_file)):
-                        
-                        # 获取RGB文件列表
-                        rgb_files = sorted(glob.glob(os.path.join(rgb_dir, "*.png")))
-                        if len(rgb_files) >= self.n_view:
-                            sequences.append({
-                                'name': item,
-                                'path': item_path,
-                                'p001_path': p001_path,
-                                'rgb_dir': rgb_dir,
-                                'depth_dir': depth_dir,
-                                'pose_file': pose_file,
-                                'rgb_files': rgb_files,
-                                'num_frames': len(rgb_files)
-                            })
+                # 查找任何Pxxx格式的子目录（P001, P002, P003等）
+                p_dirs = []
+                for sub_item in os.listdir(item_path):
+                    if sub_item.startswith('P') and os.path.isdir(os.path.join(item_path, sub_item)):
+                        # 检查是否是数字（如P001, P002等）
+                        if sub_item[1:].isdigit():
+                            p_dirs.append(sub_item)
+
+                if not p_dirs:
+                    continue  # 没有找到Pxxx子目录，跳过
+
+                # 使用第一个找到的Pxxx目录
+                p_dir = p_dirs[0]
+                p_path = os.path.join(item_path, p_dir)
+
+                # 检查必要的子目录
+                rgb_dir = os.path.join(p_path, "image_left")
+                depth_dir = os.path.join(p_path, "depth_left")
+                pose_file = os.path.join(p_path, "pose_left.txt")
+
+                if (os.path.exists(rgb_dir) and
+                    os.path.exists(depth_dir) and
+                    os.path.exists(pose_file)):
+
+                    # 获取RGB文件列表
+                    rgb_files = sorted(glob.glob(os.path.join(rgb_dir, "*.png")))
+                    if len(rgb_files) >= self.n_view:
+                        sequences.append({
+                            'name': item,
+                            'path': item_path,
+                            'p_path': p_path,  # 使用通用的p_path而不是p001_path
+                            'p_dir': p_dir,     # 记录实际使用的Pxxx目录
+                            'rgb_dir': rgb_dir,
+                            'depth_dir': depth_dir,
+                            'pose_file': pose_file,
+                            'rgb_files': rgb_files,
+                            'num_frames': len(rgb_files)
+                        })
         
         if not sequences:
             raise FileNotFoundError(f"在 {self.data_root} 中未找到有效的TartanAir序列")
