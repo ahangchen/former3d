@@ -493,7 +493,10 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 self.historical_state, poses
             )
         
-        # 4. 调用原始SDFFormer的forward方法，请求多尺度特征
+        # 4. 初始化输出字典
+        output = {}
+
+        # 5. 调用原始SDFFormer的forward方法，请求多尺度特征
         # 支持两种返回格式：带/不带multiscale_features
         result = super().forward(batch, voxel_inds_16, return_multiscale_features=True)
         if len(result) == 4:
@@ -502,8 +505,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
         else:
             voxel_outputs, proj_occ_logits, bp_data = result
             output['multiscale_features'] = None
-        
-        # 5. 如果有历史特征，执行流式融合
+
+        # 6. 如果有历史特征，执行流式融合
         if historical_features is not None and self.stream_fusion_enabled:
             # 执行流式融合
             current_features = self._extract_current_features(voxel_outputs, bp_data)
@@ -512,9 +515,10 @@ class StreamSDFFormerIntegrated(SDFFormer):
                     current_features, historical_features, poses
                 )
                 voxel_outputs = self._update_voxel_outputs(voxel_outputs, fused_features)
-        
-        # 6. 构建输出字典
-        output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
+
+        # 7. 构建输出字典（保留multiscale_features）
+        base_output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
+        output.update(base_output)
         
         # 7. 更新历史状态
         new_state = self._create_new_state(output, poses)
