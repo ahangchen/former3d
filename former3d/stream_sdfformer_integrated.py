@@ -571,39 +571,170 @@ class StreamSDFFormerIntegrated(SDFFormer):
                            current_features: Dict,
                            historical_features: Dict,
                            current_pose: torch.Tensor) -> torch.Tensor:
-        """应用流式融合
-        
-        Args:
-            current_features: 当前特征字典
-            historical_features: 历史特征字典
-            current_pose: 当前帧位姿
-            
-        Returns:
-            融合后的特征
         """
-        # 提取当前和历史特征
+        应用流式融合（Phase 4：使用Pose-based投影）
+
+        Args:
+            current_features: 当前特征字典（从_extract_current_features提取）
+            historical_features: 历史特征字典（从_extract_historical_features提取）
+            current_pose: 当前帧位姿 [B, 4, 4]
+
+        Returns:
+            融合后的特征 [N, C]
+        """
+        # 检查是否有历史特征
+        if historical_features is None:
+            print("⚠️ 没有历史特征，跳过流式融合")
+            current_feats = current_features['features']
+            return current_feats
+
+        # 检查是否有历史状态数据
+        if 'dense_grids' not in historical_features:
+            print("⚠️ 历史状态中没有dense_grids，跳过流式融合")
+            current_feats = current_features['features']
+            return current_feats
+
+        # 检查当前和历史特征是否存在
+        if current_features is None:
+            print("⚠️ 当前特征为None，跳过流式融合")
+            return None
+
         current_feats = current_features['features']
         current_coords = current_features['coords']
         current_batch_inds = current_features['batch_inds']
-        
-        historical_feats = historical_features['features']
-        historical_coords = historical_features['coords']
-        historical_batch_inds = historical_features['batch_inds']
+        num_points = current_feats.shape[0]
 
-        # 执行流式融合（使用concat替代注意力，大幅节省显存）
-        # 检查特征维度是否匹配
-        if current_feats.shape[1] == historical_feats.shape[1] == 128:
-            # Concat融合不需要坐标，只使用特征
-            fused_features = self.stream_fusion(
-                current_feats=current_feats,
-                historical_feats=historical_feats
-            )
-        else:
-            # 特征维度不匹配，跳过流式融合
-            print(f"⚠️ 特征维度不匹配，跳过流式融合: current={current_feats.shape}, historical={historical_feats.shape}")
-            fused_features = current_feats
+        # 提取当前和历史pose
+        historical_pose = self.historical_pose  # [B, 4, 4]
+        T_ch = self.pose_projection.compute_transform(historical_pose, current_pose)  # [B, 4, 4]
 
-        return fused_features
+        print(f"[StreamFusion] pose变换T_ch: {T_ch.shape}")
+
+        # 对每个分辨率级别投影历史特征
+        projected_features = {}
+
+        for resname in ['coarse', 'medium', 'fine']:
+            if resname not in historical_features['dense_grids']:
+                continue
+
+            # 获取历史特征数据
+            dense_grid = historical_features['dense_grids'][resname]  # [B, C, D, H, W]
+            sparse_indices = historical_features['sparse_indices'][resname]  # [N_historical, 4]
+            spatial_shape = historical_features['spatial_shapes'][resname]  # [D, H, W]
+            resolution = historical_features['resolutions'][resname]  # float
+
+            print(f"[StreamFusion] {resname}分辨率:")
+            print(f"  密集网格: {dense_grid.shape}")
+            print(f"  稀疏索引: {sparse_indices.shape}")
+            print(f"  空间形状: {spatial_shape}")
+            print(f"  分辨率: {resolution}")
+
+            # 获取历史坐标
+            historical_coords = sparse_indices[:, 1:4].float()  # [N_historical, 3]
+            historical_coords_homo = torch.cat([
+                historical_coords,
+                torch.ones(historical_coords.shape[0], 1, device=historical_coords.device)
+            ], dim=1)  # [N_historical, 4]
+
+            # 批次处理：为每个当前点找到对应的历史点
+            # 简化：使用相同的batch索引
+            batch_size = dense_grid.shape[0]
+            num_historical = sparse_indices.shape[0]
+
+            # 如果当前点和历史点数量不一致，使用较小的
+            num_process = min(num_points, num_historical)
+
+            # 提取历史点并扩展到当前点数量
+            historical_coords_homo = historical_coords_homo[:num_process].expand(num_process, -1, -1)
+            T_ch_expanded = T_ch[:batch_size].expand(num_process, -1, -1)
+
+            # 变换历史坐标到当前坐标系
+            transformed_coords_homo = torch.bmm(T_ch_expanded, historical_coords_homo.unsqueeze(-1))
+            transformed_coords = transformed_coords_homo.squeeze(-1)[:, :3]  # [N_process, 3]
+
+            # 转换回体素坐标
+            transformed_voxel_coords = transformed_coords / resolution
+
+            # 归一化坐标到[-1, 1]
+            normalized_coords = self.pose_projection.normalize_coords(
+                transformed_voxel_coords, spatial_shape
+            )  # [N_process, 3]
+
+            # 裁剪到有效范围
+            normalized_coords = torch.clamp(normalized_coords, -1.0, 1.0)
+
+            # 使用grid_sample从历史特征网格采样
+            # grid: [1, 1, 1, N_process, 3]
+            grid = normalized_coords.view(1, 1, 1, num_process, 3)
+            grid = grid.expand(batch_size, -1, -1, -1, -1)  # [B, 1, 1, N, 3]
+
+            print(f"[StreamFusion] {resname} grid: {grid.shape}, range: [{grid.min():.3f}, {grid.max():.3f}]")
+
+            # 采样历史特征
+            try:
+                projected = F.grid_sample(
+                    dense_grid,  # [B, C, D, H, W]
+                    grid,      # [B, 1, 1, N, 3]
+                    mode='bilinear',
+                    padding_mode='zeros',
+                    align_corners=False
+                )  # [B, C, 1, 1, N]
+
+                # 提取采样的特征
+                # 根据batch索引提取对应特征
+                projected_res = []
+                for b in range(batch_size):
+                    # 取前num_process个点的特征（因为我们只变换了这么多点）
+                    projected_b = projected[b, :, 0, 0, :num_process].permute(2, 1, 0)  # [N, C]
+                    projected_res.append(projected_b)
+
+                projected_features[resname] = torch.cat(projected_res, dim=0)  # [total, C]
+
+                print(f"[StreamFusion] {resname} 投影结果: {projected_features[resname].shape}")
+
+            except Exception as e:
+                print(f"[StreamFusion] {resname} 投影失败: {e}")
+                projected_features[resname] = torch.zeros(num_points, dense_grid.shape[1],
+                                                       device=current_feats.device)
+
+        # 融合多尺度特征
+        # 当前fine特征
+        if 'fine' in projected_features:
+            projected_fine = projected_features['fine']
+
+            # 如果coarse和medium投影成功
+            if 'coarse' in projected_features and 'medium' in projected_features:
+                projected_coarse = projected_features['coarse']
+                projected_medium = projected_features['medium']
+
+                # 使用加权融合：fine + 0.5*medium + 0.25*coarse
+                # 需要匹配空间维度
+                # 简化：如果形状不匹配，使用简单的插值
+
+                # 扩展coarse到fine的大小
+                if projected_coarse.shape[0] != projected_fine.shape[0]:
+                    projected_coarse = projected_coarse[:projected_fine.shape[0]]
+
+                if projected_coarse.shape[1] != projected_fine.shape[1]:
+                    # 使用平均池化或repeat
+                    # 简化：repeat
+                    repeat_factor = projected_fine.shape[1] // projected_coarse.shape[1]
+                    projected_coarse = projected_coarse.repeat(1, repeat_factor)
+
+                if projected_medium.shape[0] != projected_fine.shape[0]:
+                    projected_medium = projected_medium[:projected_fine.shape[0]]
+
+                if projected_medium.shape[1] != projected_fine.shape[1]:
+                    repeat_factor = projected_fine.shape[1] // projected_medium.shape[1]
+                    projected_medium = projected_medium.repeat(1, repeat_factor)
+
+                fused = projected_fine + 0.5 * projected_medium + 0.25 * projected_coarse
+            elif 'fine' in projected_features:
+                fused = projected_fine
+            else:
+                fused = current_feats
+
+        return fused
     
     def _update_voxel_outputs(self, voxel_outputs: Dict, fused_features: torch.Tensor) -> Dict:
         """更新体素输出中的特征
