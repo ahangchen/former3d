@@ -97,6 +97,16 @@ except ImportError as e:
     logger.warning("⚠️ 将不使用Rerun可视化功能")
     RERUN_VIZ_AVAILABLE = False
 
+# 导入实验配置管理
+try:
+    from experiment_config import create_experiment_directory
+    EXPERIMENT_CONFIG_AVAILABLE = True
+    logger.info("✅ ExperimentConfig导入成功")
+except ImportError as e:
+    logger.warning(f"⚠️ 无法导入ExperimentConfig: {e}")
+    logger.warning("⚠️ 将使用默认目录结构")
+    EXPERIMENT_CONFIG_AVAILABLE = False
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description='流式集成训练脚本')
@@ -1013,14 +1023,37 @@ def main():
     # 创建优化器
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
-    # 创建Rerun可视化器（如果启用）
+    # 创建实验目录（如果启用了可视化）
+    experiment_paths = None
     visualizer = None
     if RERUN_VIZ_AVAILABLE and args.enable_rerun_viz:
-        logger.info(f"✅ 启用Rerun可视化，输出目录: {args.rerun_viz_dir}")
+        logger.info(f"✅ 启用Rerun可视化")
         logger.info(f"ℹ️  使用全局模式：所有epoch数据保存到单个文件")
-        visualizer = RerunVisualizer(save_dir=args.rerun_viz_dir, global_mode=True)
+
+        # 创建实验目录并保存配置
+        if EXPERIMENT_CONFIG_AVAILABLE:
+            logger.info("正在创建实验目录并保存配置...")
+            experiment_paths = create_experiment_directory(
+                base_dir='experiments',
+                args=args,
+                model_name="StreamSDFFormerIntegrated"
+            )
+            logger.info(f"✅ 实验目录创建成功: {experiment_paths['experiment_dir']}")
+            logger.info(f"   配置文件: {experiment_paths['config_file']}")
+            logger.info(f"   可视化文件: {experiment_paths['rrd_file']}")
+        else:
+            logger.warning("⚠️ ExperimentConfig不可用，使用默认目录")
+            experiment_paths = {
+                'experiment_dir': args.rerun_viz_dir,
+                'rrd_file': os.path.join(args.rerun_viz_dir, 'training.rrd'),
+                'checkpoint_dir': 'checkpoints'
+            }
+
+        # 初始化可视化器
+        visualizer = RerunVisualizer(save_dir=experiment_paths['experiment_dir'], global_mode=True)
         # 在训练开始前初始化recording（全局模式只需要初始化一次）
         visualizer.start_recording()
+
     elif args.enable_rerun_viz and not RERUN_VIZ_AVAILABLE:
         logger.warning("⚠️ 请求启用Rerun可视化，但RerunVisualizer不可用")
         logger.warning("⚠️ 请检查rerun_visualizer.py是否存在且可以导入")
@@ -1077,8 +1110,14 @@ def main():
 
         # 每5轮保存一次检查点
         if (epoch + 1) % 5 == 0:
-            checkpoint_path = f"checkpoints/stream_model_epoch_{epoch+1}.pth"
-            os.makedirs('checkpoints', exist_ok=True)
+            # 确定检查点目录
+            if experiment_paths:
+                checkpoint_dir = experiment_paths['checkpoint_dir']
+            else:
+                checkpoint_dir = 'checkpoints'
+
+            checkpoint_path = os.path.join(checkpoint_dir, f"stream_model_epoch_{epoch+1}.pth")
+            os.makedirs(checkpoint_dir, exist_ok=True)
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
