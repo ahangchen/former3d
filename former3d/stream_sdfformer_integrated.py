@@ -499,12 +499,16 @@ class StreamSDFFormerIntegrated(SDFFormer):
         # 5. 调用原始SDFFormer的forward方法，请求多尺度特征
         # 支持两种返回格式：带/不带multiscale_features
         result = super().forward(batch, voxel_inds_16, return_multiscale_features=True)
+        print(f"[DEBUG] super().forward返回结果长度: {len(result)}")
+
         if len(result) == 4:
             voxel_outputs, proj_occ_logits, bp_data, multiscale_features = result
             output['multiscale_features'] = multiscale_features
+            print(f"[DEBUG] multiscale_features键: {list(multiscale_features.keys()) if multiscale_features else None}")
         else:
             voxel_outputs, proj_occ_logits, bp_data = result
             output['multiscale_features'] = None
+            print(f"[DEBUG] result不是4个值，multiscale_features设为None")
 
         # 6. 如果有历史特征，执行流式融合
         if historical_features is not None and self.stream_fusion_enabled:
@@ -517,7 +521,10 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 voxel_outputs = self._update_voxel_outputs(voxel_outputs, fused_features)
 
         # 7. 构建输出字典（保留multiscale_features）
-        base_output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
+        base_output = self._build_output_dict(
+            voxel_outputs, proj_occ_logits, bp_data,
+            multiscale_features=output.get('multiscale_features', None)
+        )
         output.update(base_output)
         
         # 7. 更新历史状态
@@ -769,17 +776,19 @@ class StreamSDFFormerIntegrated(SDFFormer):
         
         return voxel_outputs
     
-    def _build_output_dict(self, 
+    def _build_output_dict(self,
                           voxel_outputs: Dict,
                           proj_occ_logits: Dict,
-                          bp_data: Dict) -> Dict:
+                          bp_data: Dict,
+                          multiscale_features: Optional[Dict] = None) -> Dict:
         """构建输出字典
-        
+
         Args:
             voxel_outputs: 体素输出字典
             proj_occ_logits: 投影占用预测
             bp_data: 反投影数据
-            
+            multiscale_features: 多尺度特征（可选）
+
         Returns:
             统一的输出字典
         """
@@ -811,12 +820,9 @@ class StreamSDFFormerIntegrated(SDFFormer):
                         output['occupancy'] = features[:, 1:2]
                         print(f"从{res}分辨率提取SDF和occupancy，形状: {features.shape}")
                         break
-        
-        # 尝试提取multiscale_features（从forward方法的返回值）
-        if 'multiscale_features' in output:
-            output['multiscale_features'] = output['multiscale_features']
-        else:
-            output['multiscale_features'] = None
+
+        # 保存multiscale_features（从参数传入）
+        output['multiscale_features'] = multiscale_features
 
         # 如果仍然没有SDF输出，创建默认输出
         if output['sdf'] is None:
@@ -829,22 +835,97 @@ class StreamSDFFormerIntegrated(SDFFormer):
         return output
     
     def _create_new_state(self, output: Dict, current_pose: torch.Tensor) -> Dict:
-        """从当前输出创建新的历史状态
-        
+        """从当前输出创建新的历史状态（Phase 3改进版）
+
+        保存多尺度特征而不是最终输出
+
         Args:
             output: 当前帧输出
             current_pose: 当前帧相机位姿
-            
+
         Returns:
             新的历史状态字典
         """
         batch_size = current_pose.shape[0]
         device = current_pose.device
-        
+
+        # 检查是否有multiscale_features（Phase 3改进）
+        if 'multiscale_features' not in output or output['multiscale_features'] is None:
+            print("警告：输出中没有multiscale_features，使用legacy状态")
+            return self._create_legacy_state(output, current_pose)
+
+        multiscale_features = output['multiscale_features']
+
+        # 检查是否至少有一个分辨率级别的特征
+        if len(multiscale_features) == 0:
+            print("警告：multiscale_features为空，使用legacy状态")
+            return self._create_legacy_state(output, current_pose)
+
+        # 将每个分辨率的稀疏特征转换为密集网格
+        dense_grids = {}
+        sparse_indices = {}
+        spatial_shapes = {}
+        resolutions = {}
+
+        for resname in multiscale_features.keys():
+            features_data = multiscale_features[resname]
+            sparse_tensor = features_data['features']  # SparseConvTensor
+
+            # 转换为密集网格
+            dense_grid = self._sparse_to_dense_grid(sparse_tensor, batch_size)
+
+            # 保存数据
+            dense_grids[resname] = dense_grid  # [B, C, D, H, W]
+            sparse_indices[resname] = sparse_tensor.indices  # [N, 4]
+            spatial_shapes[resname] = sparse_tensor.spatial_shape  # [D, H, W]
+            resolutions[resname] = features_data['resolution']  # 体素分辨率
+
+        # 保存状态
+        new_state = {
+            'dense_grids': dense_grids,        # {resname: [B, C, D, H, W]}
+            'sparse_indices': sparse_indices,     # {resname: [N, 4]}
+            'spatial_shapes': spatial_shapes,      # {resname: [D, H, W]}
+            'resolutions': resolutions,             # {resname: float}
+            'batch_size': batch_size,
+            'pose': current_pose.detach().clone(),
+        }
+
+        # 为了向后兼容，添加一个默认的coords和batch_inds
+        # 这些不是真实的体素坐标，只是为了兼容旧的PoseProjection
+        # 注意：新的流式融合应该使用dense_grids而不是这些兼容字段
+        device = current_pose.device
+        total_voxels = batch_size * 500
+        max_coord = torch.tensor(self.crop_size, device=device).float() * self.resolutions['coarse']
+        new_state['coords'] = torch.rand(total_voxels, 3, device=device) * max_coord
+        new_state['batch_inds'] = torch.repeat_interleave(
+            torch.arange(batch_size, device=device), 500
+        )
+        new_state['features'] = torch.randn(total_voxels, 128, device=device)
+
+        print(f"创建新状态: 保存{len(dense_grids)}个分辨率级别")
+        for resname in dense_grids:
+            print(f"  {resname}: 密集网格{dense_grids[resname].shape}")
+
+        return new_state
+
+    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor) -> Dict:
+        """
+        创建legacy状态（用于向后兼容）
+
+        Args:
+            output: 当前帧输出
+            current_pose: 当前帧相机位姿
+
+        Returns:
+            新的历史状态字典
+        """
+        batch_size = current_pose.shape[0]
+        device = current_pose.device
+
         # 尝试从输出中提取真实的体素数据
         if 'voxel_outputs' in output and 'fine' in output['voxel_outputs']:
             fine_output = output['voxel_outputs']['fine']
-            
+
             if hasattr(fine_output, 'features') and hasattr(fine_output, 'indices'):
                 # 使用真实的体素数据
                 features = fine_output.features  # [N, 1]
@@ -883,7 +964,6 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 
                 return new_state
 
-    
     def _sparse_to_dense_grid(self, sparse_tensor, batch_size):
         """
         将SparseConvTensor转换为密集网格
