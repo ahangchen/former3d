@@ -23,6 +23,198 @@ from former3d.pose_projection import PoseProjection
 from former3d.stream_fusion_concat import StreamConcatFusion
 
 
+class PoseBasedFeatureProjection:
+    """
+    基于Pose的特征投影模块
+
+    使用GridSample将历史多尺度特征投影到当前坐标系
+    """
+
+    def __init__(self, voxel_size: float = 0.0625):
+        """
+        初始化投影器
+
+        Args:
+            voxel_size: 体素大小
+        """
+        self.voxel_size = voxel_size
+
+    def compute_transform(self, historical_pose: torch.Tensor, current_pose: torch.Tensor) -> torch.Tensor:
+        """
+        计算从历史pose到当前pose的变换矩阵
+
+        Args:
+            historical_pose: [B, 4, 4] 历史pose
+            current_pose: [B, 4, 4] 当前pose
+
+        Returns:
+            T_ch: [B, 4, 4] 从历史到当前pose的变换
+        """
+        # T_cw: 从世界到当前相机的变换
+        T_cw = current_pose  # [B, 4, 4]
+
+        # T_hw: 从世界到历史相机的变换
+        T_hw = historical_pose  # [B, 4, 4]
+
+        # T_ch = T_cw * T_hw^{-1}: 从历史相机到当前相机的变换
+        T_hw_inv = torch.inverse(T_hw)  # [B, 4, 4]
+        T_ch = torch.bmm(T_cw, T_hw_inv)  # [B, 4, 4]
+
+        return T_ch
+
+    def transform_voxel_coords(self, voxel_coords: torch.Tensor, T_ch: torch.Tensor) -> torch.Tensor:
+        """
+        变换体素坐标
+
+        Args:
+            voxel_coords: [N, 3] 体素坐标
+            T_ch: [4, 4] 或 [B, 4, 4] 变换矩阵
+
+        Returns:
+            transformed_coords: [N, 3] 或 [N, B, 3] 变换后的坐标
+        """
+        # 添加齐次坐标
+        ones = torch.ones(voxel_coords.shape[0], 1, device=voxel_coords.device, dtype=voxel_coords.dtype)
+        coords_homo = torch.cat([voxel_coords, ones], dim=1)  # [N, 4]
+
+        # 应用变换
+        if T_ch.dim() == 2:  # [4, 4]
+            transformed = (T_ch @ coords_homo.T).T  # [N, 4]
+        else:  # [B, 4, 4]
+            coords_homo = coords_homo.unsqueeze(1)  # [N, 1, 4]
+            # 使用bmm进行批量矩阵乘法
+            # coords_homo: [N, 1, 4], T_ch: [B, 4, 4]
+            # 需要广播到 [N, B, 4] x [N, B, 4, 4] 或类似的形状
+
+            # 更简单的方式：逐个batch处理
+            num_points = voxel_coords.shape[0]
+            batch_size = T_ch.shape[0]
+
+            # 扩展coords_homo到[N, B, 4]
+            coords_homo_expanded = coords_homo.unsqueeze(1).expand(-1, batch_size, -1)  # [N, B, 4]
+            # 扩展T_ch到[N, B, 4, 4]
+            T_ch_expanded = T_ch.unsqueeze(0).expand(num_points, -1, -1)  # [N, B, 4, 4]
+
+            # 矩阵乘法: [N, B, 4, 4] @ [N, B, 4, 1]
+            coords_homo_for_bmm = coords_homo_expanded.unsqueeze(-1)  # [N, B, 4, 1]
+            transformed = torch.matmul(T_ch_expanded, coords_homo_for_bmm).squeeze(-1)  # [N, B, 4]
+
+        # 只返回前3个坐标
+        return transformed[..., :3]
+
+    def normalize_coords(self, coords: torch.Tensor, grid_shape: Tuple[int, int, int]) -> torch.Tensor:
+        """
+        将坐标归一化到[-1, 1]范围
+
+        Args:
+            coords: [N, 3] 坐标
+            grid_shape: [D, H, W] 网格形状
+
+        Returns:
+            normalized_coords: [N, 3] 归一化后的坐标
+        """
+        D, H, W = grid_shape
+
+        # 避免除零
+        D = max(D, 1)
+        H = max(H, 1)
+        W = max(W, 1)
+
+        x_norm = (coords[:, 0] / (D - 1)) * 2 - 1
+        y_norm = (coords[:, 1] / (H - 1)) * 2 - 1
+        z_norm = (coords[:, 2] / (W - 1)) * 2 - 1
+
+        normalized_coords = torch.stack([x_norm, y_norm, z_norm], dim=1)
+
+        return normalized_coords
+
+    def project_features(self,
+                        historical_features_grid: torch.Tensor,
+                        historical_indices: torch.Tensor,
+                        current_indices: torch.Tensor,
+                        T_ch: torch.Tensor,
+                        grid_shape: Tuple[int, int, int]) -> torch.Tensor:
+        """
+        使用grid_sample从历史特征投影到当前坐标
+
+        Args:
+            historical_features_grid: [B, C, D, H, W] 历史特征密集网格
+            historical_indices: [N, 4] 历史体素索引 (b, x, y, z)
+            current_indices: [N, 4] 当前体素索引 (b, x, y, z)
+            T_ch: [B, 4, 4] 变换矩阵
+            grid_shape: [D, H, W] 网格形状
+
+        Returns:
+            projected_features: [N, C] 投影后的特征
+        """
+        device = historical_features_grid.device
+        num_points = current_indices.shape[0]
+        batch_size = historical_features_grid.shape[0]
+
+        # 提取历史体素坐标并转换为世界坐标
+        # historical_indices格式: [b, x, y, z]
+        historical_coords = historical_indices[:, 1:4].float()  # [N, 3]
+        historical_coords = historical_coords * self.voxel_size  # 世界坐标
+
+        # 添加齐次坐标
+        ones = torch.ones(num_points, 1, device=device, dtype=historical_coords.dtype)
+        historical_coords_homo = torch.cat([historical_coords, ones], dim=1)  # [N, 4]
+
+        # 根据batch索引选择对应的变换矩阵
+        batch_indices = current_indices[:, 0].long()  # [N]
+
+        # 检查batch索引是否在有效范围内
+        if (batch_indices < 0).any() or (batch_indices >= batch_size).any():
+            print(f"[PoseBasedFeatureProjection] 警告：batch索引超出范围，min={batch_indices.min()}, max={batch_indices.max()}, batch_size={batch_size}")
+            batch_indices = torch.clamp(batch_indices, 0, batch_size - 1)
+
+        T_ch_batch = T_ch[batch_indices]  # [N, 4, 4]
+
+        # 变换坐标到当前相机坐标系
+        transformed_coords_homo = torch.bmm(T_ch_batch, historical_coords_homo.unsqueeze(-1))
+        transformed_coords = transformed_coords_homo.squeeze(-1)[:, :3]  # [N, 3]
+
+        # 转换回体素坐标
+        transformed_voxel_coords = transformed_coords / self.voxel_size  # [N, 3]
+
+        # 归一化坐标到[-1, 1]
+        normalized_coords = self.normalize_coords(transformed_voxel_coords, grid_shape)
+
+        # 裁剪坐标到有效范围，防止grid_sample越界
+        normalized_coords = torch.clamp(normalized_coords, -1.0, 1.0)
+
+        # 使用grid_sample采样
+        grid = normalized_coords.view(1, 1, 1, num_points, 3)  # [1, 1, 1, N, 3]
+        grid = grid.expand(batch_size, -1, -1, -1, -1)  # [B, 1, 1, N, 3]
+
+        # 采样
+        sampled = F.grid_sample(
+            historical_features_grid,  # [B, C, D, H, W]
+            grid,                      # [B, 1, 1, N, 3]
+            mode='bilinear',
+            padding_mode='zeros',
+            align_corners=False
+        )  # [B, C, 1, 1, N]
+
+        # 提取采样的特征：[N, C]
+        # 需要根据batch索引提取对应的特征
+        projected_features = []
+        for b in range(batch_size):
+            mask = batch_indices == b
+            if mask.any():
+                projected_features.append(sampled[b, :, 0, 0, mask])
+            else:
+                projected_features.append(torch.zeros(
+                    (0, historical_features_grid.shape[1]),
+                    device=device,
+                    dtype=historical_features_grid.dtype
+                ))
+
+        projected_features = torch.cat(projected_features, dim=0)  # [N, C]
+
+        return projected_features
+
+
 class StreamSDFFormerIntegrated(SDFFormer):
     """流式SDFFormer集成版本
     
