@@ -79,7 +79,25 @@ class SDFFormer(torch.nn.Module):
             feats[resname] = f
         return feats
 
-    def forward(self, batch, voxel_inds_16):
+    def forward(self, batch, voxel_inds_16, return_multiscale_features=False):
+        """
+        SDFFormer前向传播
+
+        Args:
+            batch: 批次数据字典，包含:
+                - rgb_imgs: [B, N, 3, H, W]
+                - proj_mats: 投影矩阵字典
+                - cam_positions: 相机位置
+                - origin: 原点坐标
+            voxel_inds_16: 体素索引 [N, 4]
+            return_multiscale_features: 是否返回多尺度特征
+
+        Returns:
+            如果return_multiscale_features=True:
+                (voxel_outputs, proj_occ_logits, bp_data, multiscale_features)
+            否则:
+                (voxel_outputs, proj_occ_logits, bp_data)
+        """
         feats_2d = self.get_img_feats(
             batch["rgb_imgs"], batch["proj_mats"], batch["cam_positions"]
         )
@@ -89,6 +107,7 @@ class SDFFormer(torch.nn.Module):
         proj_occ_logits = {}
         voxel_outputs = {}
         bp_data = {}
+        multiscale_features = {} if return_multiscale_features else None
         n_subsample = {
             "medium": 2 ** 14,
             "fine": 2 ** 16,
@@ -147,18 +166,35 @@ class SDFFormer(torch.nn.Module):
             voxel_logits = self.output_layers[resname](voxel_features)
             voxel_outputs[resname] = voxel_logits
 
+            # 保存多尺度特征（如果需要）
+            if return_multiscale_features:
+                multiscale_features[resname] = {
+                    'features': voxel_features,  # 3D网络输出（经过output_layers之前）
+                    'indices': voxel_features.indices,  # [N, 4] (b, x, y, z)
+                    'batch_size': voxel_features.batch_size,
+                    'spatial_shape': voxel_features.spatial_shape,  # [D, H, W]
+                    'resolution': res,  # 体素分辨率
+                    'logits': voxel_logits  # 输出层的logits
+                }
+
             if resname in ["coarse", "medium"]:
                 # sparsify & upsample
                 occupancy = voxel_logits.features.squeeze(1) > 0
                 if not torch.any(occupancy):
-                    return voxel_outputs, proj_occ_logits, bp_data
+                    if return_multiscale_features:
+                        return voxel_outputs, proj_occ_logits, bp_data, multiscale_features
+                    else:
+                        return voxel_outputs, proj_occ_logits, bp_data
                 voxel_features = self.upsampler.upsample_feats(
                     voxel_features.features[occupancy]
                 )
                 voxel_inds = self.upsampler.upsample_inds(bxyz2xyzb(voxel_logits.indices)[occupancy])
                 voxel_logits = self.upsampler.upsample_feats(voxel_logits.features[occupancy])
 
-        return voxel_outputs, proj_occ_logits, bp_data
+        if return_multiscale_features:
+            return voxel_outputs, proj_occ_logits, bp_data, multiscale_features
+        else:
+            return voxel_outputs, proj_occ_logits, bp_data
 
     def losses(self, voxel_logits, voxel_gt, proj_occ_logits, bp_data, depth_imgs):
         voxel_losses = {}
