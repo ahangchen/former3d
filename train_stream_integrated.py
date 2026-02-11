@@ -87,6 +87,16 @@ except ImportError as e:
     logger.warning("⚠️ 将不使用显存清理功能")
     MEMORY_MANAGER_AVAILABLE = False
 
+# 导入Rerun可视化器
+try:
+    from rerun_visualizer import RerunVisualizer
+    RERUN_VIZ_AVAILABLE = True
+    logger.info("✅ RerunVisualizer导入成功")
+except ImportError as e:
+    logger.warning(f"⚠️ 无法导入RerunVisualizer: {e}")
+    logger.warning("⚠️ 将不使用Rerun可视化功能")
+    RERUN_VIZ_AVAILABLE = False
+
 def parse_args():
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description='流式集成训练脚本')
@@ -129,6 +139,11 @@ def parse_args():
     # 显存分析参数
     parser.add_argument('--enable-memory-profile', action='store_true', help='启用显存分析')
     parser.add_argument('--memory-profile-output', type=str, default='memory_profile', help='显存分析输出文件前缀')
+
+    # Rerun可视化参数
+    parser.add_argument('--enable-rerun-viz', action='store_true', help='启用Rerun可视化')
+    parser.add_argument('--rerun-viz-dir', type=str, default='viz', help='Rerun可视化输出目录')
+    parser.add_argument('--rerun-viz-freq', type=int, default=1, help='可视化频率（每N个epoch记录一次）')
 
     return parser.parse_args()
 
@@ -365,6 +380,94 @@ def compute_loss(output, ground_truth, frame_data):
         # 计算MSE损失
         return nn.functional.mse_loss(sdf_pred, tsdf_gt)
 
+def prepare_visualization_data(batch, outputs, sequence_length):
+    """
+    准备可视化数据，将batch和模型输出转换为RerunVisualizer期望的格式
+
+    Args:
+        batch: 原始batch数据
+        outputs: 模型输出
+        sequence_length: 序列长度
+
+    Returns:
+        dict: 可视化数据字典
+    """
+    # 提取RGB图像并转换通道顺序：(batch, n_view, 3, H, W) -> (batch, n_view, H, W, 3)
+    rgb_images = batch['rgb_images'].permute(0, 1, 3, 4, 2).cpu().numpy()  # (batch, n_view, H, W, 3)
+
+    # 计算深度图（从TSDF的第一层提取作为近似）
+    # TSDF格式：(batch, 1, D, H, W)，取D=0层作为深度近似
+    tsdf = batch['tsdf'].cpu()  # (batch, 1, D, H, W)
+    rgb_height, rgb_width = batch['rgb_images'].shape[3], batch['rgb_images'].shape[4]
+
+    if tsdf.shape[2] > 0:  # 如果有深度维度
+        depth_tsdf = tsdf[:, 0, 0, :, :]  # (batch, H_tsdf, W_tsdf)
+        # 使用上采样或下采样匹配RGB分辨率
+        from torch.nn.functional import interpolate
+        depth_tsdf = depth_tsdf.unsqueeze(1)  # (batch, 1, H_tsdf, W_tsdf)
+        depth_upsampled = interpolate(depth_tsdf, size=(rgb_height, rgb_width),
+                                    mode='bilinear', align_corners=False)
+        depth_upsampled = depth_upsampled.squeeze(1)  # (batch, H, W)
+        # 扩展到n_view维度
+        depth = depth_upsampled.unsqueeze(1).repeat(1, sequence_length, 1, 1)  # (batch, n_view, H, W)
+    else:
+        # 如果没有深度维度，创建零深度
+        depth = torch.zeros(batch['rgb_images'].shape[0], sequence_length,
+                         rgb_height, rgb_width)
+    depth = depth.numpy()
+
+
+    # 提取相机参数
+    poses = batch['poses'].cpu().numpy()  # (batch, n_view, 4, 4)
+    intrinsics = batch['intrinsics'].cpu().numpy()  # (batch, n_view, 3, 3)
+
+    # 计算占用真值：从TSDF计算
+    # 占用 = |TSDF| < 0.5
+    tsdf_numpy = batch['tsdf'].cpu().numpy()
+    occupancy = (np.abs(tsdf_numpy) < 0.5).astype(np.float32)  # (batch, 1, D, H, W)
+
+    # 准备基础可视化数据
+    viz_data = {
+        'rgb_images': rgb_images,
+        'depth': depth,
+        'poses': poses,
+        'intrinsics': intrinsics,
+        'tsdf': tsdf_numpy,
+        'occupancy': occupancy
+    }
+
+    # 尝试提取预测数据（如果可用）
+    if outputs is not None:
+        if isinstance(outputs, dict):
+            # 处理字典格式的输出
+            if 'sdf' in outputs and outputs['sdf'] is not None:
+                sdf_pred = outputs['sdf']  # 可能格式：(batch, n_view, N, 1) 或其他
+                # 转换为numpy
+                if isinstance(sdf_pred, torch.Tensor):
+                    sdf_pred = sdf_pred.detach().cpu().numpy()
+                # 尝试reshape为(batch, N, 1)
+                if len(sdf_pred.shape) == 4:  # (batch, n_view, N, 1)
+                    # 取最后一个view的预测
+                    sdf_pred = sdf_pred[:, -1, :, :]  # (batch, N, 1)
+                elif len(sdf_pred.shape) == 3:  # (batch, N, 1) 或 (N, 1)
+                    # 确保是(batch, N, 1)格式
+                    if sdf_pred.shape[0] != batch['rgb_images'].shape[0]:
+                        # 可能是(N, 1)格式，扩展到batch
+                        sdf_pred = sdf_pred.unsqueeze(0).repeat(batch['rgb_images'].shape[0], 1, 1)
+                viz_data['sdf_pred'] = sdf_pred
+
+            # 其他预测格式（如occupancy prediction）
+            # 根据实际模型输出添加
+        else:
+            # 处理tensor格式的输出
+            if isinstance(outputs, torch.Tensor):
+                outputs_np = outputs.detach().cpu().numpy()
+                # 尝试判断这是什么类型的预测
+                if len(outputs_np.shape) == 5:  # (batch, 1, D, H, W) - 可能是占用预测
+                    viz_data['occ_pred'] = outputs_np
+
+    return viz_data
+
 def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
     """流式训练一个epoch（支持梯度累积）- 修复版：移除batch_idx和frame_idx循环遍历
 
@@ -377,7 +480,7 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         epoch: 当前轮数
 
     Returns:
-        float: 平均损失
+        tuple: (平均损失, 最后一个batch数据, 最后一个outputs, sequence_length)
     """
     model.train()
     total_loss = 0.0
@@ -412,6 +515,11 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
     accumulation_counter = 0
     optimizer.zero_grad()
 
+    # 保存最后一个batch和outputs用于可视化
+    last_batch = None
+    last_outputs = None
+    final_sequence_length = 0
+
     # 记录初始显存
     if profiler:
         profiler.set_step(0)
@@ -421,6 +529,9 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         print_gpu_memory("[训练开始]")
 
     for batch_idx, batch in enumerate(dataloader):
+        # 保存最后一个batch
+        last_batch = batch
+        final_sequence_length = batch['rgb_images'].shape[1]
         # 更新显存分析器步数
         if profiler:
             profiler.set_step(batch_idx)
@@ -499,6 +610,9 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
                 profiler.set_layer(f"Frame {frame_idx}")
                 profiler.record(f"Batch {batch_idx}, Frame {frame_idx}")
 
+        # 保存最后一个outputs用于可视化（在训练循环中）
+        last_outputs = outputs
+
         # 计算损失（整个序列的损失）
         # batch['tsdf']: (batch, 1, D, H, W)
         # outputs: (batch, n_view, ...)
@@ -571,7 +685,8 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
         profiler.print_summary()
         profiler.export_to_file(f"{args.memory_profile_output}_epoch_{epoch+1}")
 
-    return avg_loss
+    # 返回损失和最后的数据用于可视化
+    return avg_loss, last_batch, last_outputs, final_sequence_length
     """流式训练一个epoch（支持梯度累积）- 修复版：移除batch_idx和frame_idx循环遍历
 
     Args:
@@ -898,13 +1013,26 @@ def main():
     # 创建优化器
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
 
+    # 创建Rerun可视化器（如果启用）
+    visualizer = None
+    if RERUN_VIZ_AVAILABLE and args.enable_rerun_viz:
+        logger.info(f"✅ 启用Rerun可视化，输出目录: {args.rerun_viz_dir}")
+        visualizer = RerunVisualizer(save_dir=args.rerun_viz_dir)
+    elif args.enable_rerun_viz and not RERUN_VIZ_AVAILABLE:
+        logger.warning("⚠️ 请求启用Rerun可视化，但RerunVisualizer不可用")
+        logger.warning("⚠️ 请检查rerun_visualizer.py是否存在且可以导入")
+    else:
+        logger.info("ℹ️  Rerun可视化已禁用")
+
     # 训练循环
     for epoch in range(args.epochs):
         logger.info(f"开始第 {epoch+1}/{args.epochs} 轮训练")
 
         # 训练一个epoch，捕获异常以保存显存数据
         try:
-            train_loss = train_epoch_stream(model, dataloader, optimizer, device, args, epoch)
+            train_loss, last_batch, last_outputs, seq_len = train_epoch_stream(
+                model, dataloader, optimizer, device, args, epoch
+            )
             logger.info(f"第 {epoch+1} 轮训练完成，平均损失: {train_loss:.6f}")
         except Exception as e:
             logger.error(f"训练过程中发生异常: {e}")
@@ -926,6 +1054,25 @@ def main():
                 profiler.export_to_file(profiler_path)
 
             raise
+
+        # 执行Rerun可视化（如果启用且达到频率）
+        if visualizer and (epoch % args.rerun_viz_freq == 0):
+            try:
+                logger.info(f"正在记录epoch {epoch+1}的可视化数据...")
+
+                # 准备可视化数据
+                viz_data = prepare_visualization_data(last_batch, last_outputs, seq_len)
+
+                # 记录可视化
+                visualizer.start_recording(epoch, len(dataloader) - 1)
+                visualizer.log_sample(viz_data, epoch, n_view=seq_len)
+                visualizer.finish_recording()
+
+                logger.info(f"✅ 可视化数据已保存到 {args.rerun_viz_dir}/epoch_{epoch:04d}/")
+            except Exception as e:
+                logger.warning(f"⚠️ 可视化记录失败: {e}")
+                import traceback
+                traceback.print_exc()
 
         # 每5轮保存一次检查点
         if (epoch + 1) % 5 == 0:
