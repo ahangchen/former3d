@@ -493,8 +493,15 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 self.historical_state, poses
             )
         
-        # 4. 调用原始SDFFormer的forward方法
-        voxel_outputs, proj_occ_logits, bp_data = super().forward(batch, voxel_inds_16)
+        # 4. 调用原始SDFFormer的forward方法，请求多尺度特征
+        # 支持两种返回格式：带/不带multiscale_features
+        result = super().forward(batch, voxel_inds_16, return_multiscale_features=True)
+        if len(result) == 4:
+            voxel_outputs, proj_occ_logits, bp_data, multiscale_features = result
+            output['multiscale_features'] = multiscale_features
+        else:
+            voxel_outputs, proj_occ_logits, bp_data = result
+            output['multiscale_features'] = None
         
         # 5. 如果有历史特征，执行流式融合
         if historical_features is not None and self.stream_fusion_enabled:
@@ -670,6 +677,12 @@ class StreamSDFFormerIntegrated(SDFFormer):
                         print(f"从{res}分辨率提取SDF和occupancy，形状: {features.shape}")
                         break
         
+        # 尝试提取multiscale_features（从forward方法的返回值）
+        if 'multiscale_features' in output:
+            output['multiscale_features'] = output['multiscale_features']
+        else:
+            output['multiscale_features'] = None
+
         # 如果仍然没有SDF输出，创建默认输出
         if output['sdf'] is None:
             device = next(self.parameters()).device if hasattr(self, 'parameters') else torch.device('cpu')
@@ -734,6 +747,87 @@ class StreamSDFFormerIntegrated(SDFFormer):
                     logger.warning("⚠️  非轻量级模式：保存完整输出可能导致内存泄漏")
                 
                 return new_state
+
+    
+    def _sparse_to_dense_grid(self, sparse_tensor, batch_size):
+        """
+        将SparseConvTensor转换为密集网格
+
+        Args:
+            sparse_tensor: SparseConvTensor
+            batch_size: 批次大小
+
+        Returns:
+            dense_grid: [batch_size, C, D, H, W] 密集网格
+        """
+        features = sparse_tensor.features  # [N, C]
+        indices = sparse_tensor.indices    # [N, 4] (b, x, y, z)
+        spatial_shape = sparse_tensor.spatial_shape  # [D, H, W]
+        num_channels = features.shape[1]
+
+        # 创建密集网格
+        dense_grid = torch.zeros(
+            (batch_size, num_channels, *spatial_shape),
+            device=features.device,
+            dtype=features.dtype
+        )
+
+        # 填充稀疏特征
+        for i in range(len(features)):
+            b, x, y, z = indices[i].tolist()
+
+            # 检查索引是否在有效范围内
+            if 0 <= b < batch_size and                0 <= x < spatial_shape[0] and                0 <= y < spatial_shape[1] and                0 <= z < spatial_shape[2]:
+                dense_grid[b, :, x, y, z] = features[i]
+
+        return dense_grid
+
+    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor) -> Dict:
+        """
+        创建legacy状态（用于向后兼容）
+
+        Args:
+            output: 当前帧输出
+            current_pose: 当前帧相机位姿
+
+        Returns:
+            新的历史状态字典
+        """
+        batch_size = current_pose.shape[0]
+        device = current_pose.device
+
+        num_voxels_per_batch = 500
+        total_voxels = batch_size * num_voxels_per_batch
+
+        # 生成坐标
+        max_coord = torch.tensor(self.crop_size, device=device).float() * self.resolutions['coarse']
+        coords = torch.rand(total_voxels, 3, device=device) * max_coord
+
+        # 批次索引
+        batch_inds = torch.repeat_interleave(
+            torch.arange(batch_size, device=device),
+            num_voxels_per_batch
+        )
+
+        # 生成特征
+        feature_dim = 128
+        features = torch.randn(total_voxels, feature_dim, device=device)
+
+        # 生成SDF和占用（模拟）
+        sdf = torch.randn(total_voxels, 1, device=device)
+        occupancy = torch.randn(total_voxels, 1, device=device)
+
+        new_state = {
+            'features': features,
+            'sdf': sdf,
+            'occupancy': occupancy,
+            'coords': coords,
+            'batch_inds': batch_inds,
+            'num_voxels': total_voxels,
+            'pose': current_pose.detach().clone(),
+        }
+
+        return new_state
         
         # 如果无法提取真实数据，使用简化版本（向后兼容）
         print("警告：使用简化的历史状态创建")
