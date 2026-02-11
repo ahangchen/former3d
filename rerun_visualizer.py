@@ -1,15 +1,16 @@
 """
-Rerun可视化模块
+Rerun可视化模块 - 支持全局记录模式
 
 为Former3D流式训练提供Rerun.io可视化功能，支持：
 - 实时/离线保存可视化数据到.rrd文件
 - 可视化RGB图像、深度、位姿、真值和预测
+- 全局时间戳模式：所有epoch数据存到一个文件
 - 时间戳格式：epoch * n_view + frame_index
 
 使用方法：
-    1. 在训练脚本中初始化可视化器
-    2. 在epoch结束时调用log_sample记录最后一个batch
-    3. 调用finish_recording保存并关闭
+    1. 在训练脚本开始时初始化可视化器
+    2. 每个epoch结束时调用log_sample记录最后一个batch
+    3. 训练全部结束后调用finish_recording
     4. 使用Rerun Viewer打开.rrd文件查看
 """
 
@@ -28,46 +29,73 @@ class RerunVisualizer:
     支持将训练数据记录到.rrd文件，并用Rerun Viewer交互式查看
     """
 
-    def __init__(self, save_dir: str = "viz"):
+    def __init__(self, save_dir: str = "viz", global_mode: bool = True):
         """
         初始化可视化器
 
         Args:
             save_dir: 可视化数据保存目录
+            global_mode: 全局模式，所有epoch数据存到一个文件（默认True）
         """
         self.save_dir = save_dir
+        self.global_mode = global_mode
+        self.recording_started = False
+
         os.makedirs(save_dir, exist_ok=True)
+
+        if global_mode:
+            # 全局模式：输出到单个文件
+            self.output_path = os.path.join(save_dir, "training.rrd")
+        else:
+            # 分散模式：每个epoch一个文件（保留旧行为）
+            self.output_path = None
+
         self.recording_stream = None
 
-    def start_recording(self, epoch: int, batch_idx: int):
+    def start_recording(self, epoch: int = 0, batch_idx: int = 0):
         """
-        开始一个新的epoch记录
+        开始记录
+
+        全局模式下：只在第一次调用时初始化
+        分散模式下：每次调用重新初始化
 
         Args:
             epoch: 当前epoch数
             batch_idx: 当前batch索引
         """
-        output_path = os.path.join(
-            self.save_dir,
-            f"epoch_{epoch:04d}",
-            f"batch_{batch_idx:04d}.rrd"
-        )
+        if self.global_mode and self.recording_started:
+            # 全局模式且已初始化，跳过
+            return
+
+        # 确定输出路径
+        if self.global_mode:
+            output_path = self.output_path
+        else:
+            # 分散模式：每个epoch一个文件
+            output_path = os.path.join(
+                self.save_dir,
+                f"epoch_{epoch:04d}",
+                f"batch_{batch_idx:04d}.rrd"
+            )
 
         # 确保输出目录存在
         output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
-
-        print(f"[RerunViz] 开始记录 epoch {epoch}, batch {batch_idx} 到 {output_path}")
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
         # 初始化rerun应用
-        rr.init("former3d_training", recording_id=f"epoch{epoch}_batch{batch_idx}")
+        if self.global_mode:
+            rr.init("former3d_training_global", recording_id="global_training")
+        else:
+            rr.init("former3d_training", recording_id=f"epoch{epoch}_batch{batch_idx}")
 
         # 保存到文件
         rr.save(output_path)
 
-        # 设置时间线，使用sequence类型确保帧按顺序排列
-        # 使用set_time_sequence设置序列时间
-        rr.set_time_sequence("frame_nr", 0)
+        print(f"[RerunViz] 开始记录到 {output_path}")
+
+        self.recording_started = True
+        self.output_path = output_path
 
     def log_sample(self, batch_data: Dict, epoch: int, n_view: int, sample_idx: Optional[int] = None):
         """
@@ -79,12 +107,17 @@ class RerunVisualizer:
             n_view: 每个样本的帧数
             sample_idx: 样本在batch中的索引（默认使用最后一个）
         """
+        # 如果没有初始化记录，先初始化
+        if not self.recording_started:
+            self.start_recording()
+
         # 如果没有指定sample_idx，使用最后一个样本
         if sample_idx is None:
             sample_idx = batch_data['rgb_images'].shape[0] - 1
 
         for frame_idx in range(n_view):
-            # 计算时间戳：epoch * n_view + frame_idx
+            # 计算全局时间戳：epoch * n_view + frame_idx
+            # 这样不同epoch的数据在时间轴上不会重叠
             timestamp = epoch * n_view + frame_idx
             rr.set_time_sequence("frame_nr", timestamp)
 
@@ -153,7 +186,7 @@ class RerunVisualizer:
 
         # 从图像shape推断分辨率（如果没有在batch中）
         rgb_shape = batch_data['rgb_images'][sample_idx, frame_idx].shape
-        height, width = rgb_shape[-2], rgb_shape[-3]
+        height, width = rgb_shape[0], rgb_shape[1]
 
         rr.log(
             "batch/sample/camera",
@@ -169,7 +202,7 @@ class RerunVisualizer:
         # 提取4x4变换矩阵的平移和旋转部分
         translation = pose[:3, 3]  # 平移向量
         rotation_matrix = pose[:3, :3]  # 旋转矩阵
-        
+
         rr.log(
             "batch/sample/camera/pose",
             rr.Transform3D(translation=translation, mat3x3=rotation_matrix, from_parent=True)
@@ -220,7 +253,7 @@ class RerunVisualizer:
 
             # 将占用网格转换为点云进行可视化
             occupied_indices = np.argwhere(occ_gt > 0.5)
-            
+
             if len(occupied_indices) > 0:
                 voxel_coords = np.asarray(occupied_indices, dtype=np.float32)
 
@@ -244,7 +277,7 @@ class RerunVisualizer:
             sdf_pred = batch_data['sdf_pred'][sample_idx]  # [N, 1] or [N_points]
 
             if sdf_pred.ndim == 2 and sdf_pred.shape[1] == 1:
-                # 点云格式：[N, 3]
+                # 点云格式：[N, 1]
                 rr.log(
                     "batch/sample/scene/sdf_pred",
                     rr.Points3D(
@@ -266,7 +299,7 @@ class RerunVisualizer:
                 occupied_indices = np.argwhere(occ_pred > 0.5)
 
                 if len(occupied_indices) > 0:
-                    voxel_coords = occupied_indices.astype(np.float32)
+                    voxel_coords = np.asarray(occupied_indices, dtype=np.float32)
 
                     rr.log(
                         "batch/sample/scene/occ_pred",
@@ -290,10 +323,17 @@ class RerunVisualizer:
 
     def finish_recording(self):
         """
-        结束记录
+        结束记录并保存到.rrd文件
+
+        这会flush所有数据
         """
-        print(f"[RerunViz] 完成记录")
-        # rr.save会自动处理保存
+        if self.recording_started:
+            print(f"[RerunViz] 完成记录并保存到 {self.output_path}")
+            # rr.save会自动处理保存，不需要额外操作
+            # 但是我们可以确保数据已flush
+            pass
+        else:
+            print("[RerunViz] Warning: 没有活动的recording stream")
 
 
 def tensor_to_numpy(tensor: torch.Tensor) -> np.ndarray:

@@ -1017,7 +1017,10 @@ def main():
     visualizer = None
     if RERUN_VIZ_AVAILABLE and args.enable_rerun_viz:
         logger.info(f"✅ 启用Rerun可视化，输出目录: {args.rerun_viz_dir}")
-        visualizer = RerunVisualizer(save_dir=args.rerun_viz_dir)
+        logger.info(f"ℹ️  使用全局模式：所有epoch数据保存到单个文件")
+        visualizer = RerunVisualizer(save_dir=args.rerun_viz_dir, global_mode=True)
+        # 在训练开始前初始化recording（全局模式只需要初始化一次）
+        visualizer.start_recording()
     elif args.enable_rerun_viz and not RERUN_VIZ_AVAILABLE:
         logger.warning("⚠️ 请求启用Rerun可视化，但RerunVisualizer不可用")
         logger.warning("⚠️ 请检查rerun_visualizer.py是否存在且可以导入")
@@ -1063,12 +1066,10 @@ def main():
                 # 准备可视化数据
                 viz_data = prepare_visualization_data(last_batch, last_outputs, seq_len)
 
-                # 记录可视化
-                visualizer.start_recording(epoch, len(dataloader) - 1)
+                # 记录可视化（全局模式：不需要start_recording和finish_recording）
                 visualizer.log_sample(viz_data, epoch, n_view=seq_len)
-                visualizer.finish_recording()
 
-                logger.info(f"✅ 可视化数据已保存到 {args.rerun_viz_dir}/epoch_{epoch:04d}/")
+                logger.info(f"✅ 可视化数据已记录（全局文件: {visualizer.output_path})")
             except Exception as e:
                 logger.warning(f"⚠️ 可视化记录失败: {e}")
                 import traceback
@@ -1086,6 +1087,17 @@ def main():
                 'args': vars(args)
             }, checkpoint_path)
             logger.info(f"检查点保存到: {checkpoint_path}")
+
+    # 完成Rerun可视化（如果启用）
+    if visualizer:
+        try:
+            logger.info("正在完成Rerun可视化记录...")
+            visualizer.finish_recording()
+            logger.info(f"✅ 可视化数据已全部保存到: {visualizer.output_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ 可视化完成失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     logger.info("训练完成!")
 
