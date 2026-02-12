@@ -880,6 +880,39 @@ class StreamSDFFormerIntegrated(SDFFormer):
             spatial_shapes[resname] = sparse_tensor.spatial_shape  # [D, H, W]
             resolutions[resname] = features_data['resolution']  # 体素分辨率
 
+        # Phase 1: 提取并保存fine分辨率的SDF
+        sdf_grid = None
+        sdf_indices = None
+        sdf_spatial_shape = None
+        sdf_resolution = None
+
+        if 'voxel_outputs' in output and 'fine' in output['voxel_outputs']:
+            fine_output = output['voxel_outputs']['fine']  # SparseConvTensor
+
+            if fine_output is not None:
+                # 提取fine分辨率的SDF（SDF值在features中）
+                # 注意：fine_output.features的形状是[N, 1]或[N, C]，其中第一维是SDF
+                sdf_sparse = fine_output  # SparseConvTensor [N, 1] 或 [N, C]
+
+                # 转换为密集网格
+                sdf_dense = self._sparse_to_dense_grid(sdf_sparse, batch_size)  # [B, C, D, H, W]
+
+                # 如果特征维度>1，只取第一维（SDF）
+                if sdf_dense.shape[1] > 1:
+                    sdf_dense = sdf_dense[:, :1, :, :, :]  # [B, 1, D, H, W]
+
+                # 保存SDF相关数据
+                sdf_grid = sdf_dense  # [B, 1, D, H, W]
+                sdf_indices = sdf_sparse.indices  # [N, 4]
+                sdf_spatial_shape = sdf_sparse.spatial_shape  # [D, H, W]
+                sdf_resolution = self.resolutions['fine']  # float
+
+                print(f"[Phase 1] SDF已保存: {sdf_dense.shape}, 分辨率: {self.resolutions['fine']}")
+            else:
+                print("[Phase 1] 警告：fine_output为None，未保存SDF")
+        else:
+            print("[Phase 1] 警告：输出中没有voxel_outputs或fine，未保存SDF")
+
         # 保存状态
         new_state = {
             'dense_grids': dense_grids,        # {resname: [B, C, D, H, W]}
@@ -889,6 +922,13 @@ class StreamSDFFormerIntegrated(SDFFormer):
             'batch_size': batch_size,
             'pose': current_pose.detach().clone(),
         }
+
+        # Phase 1: 添加SDF字段到状态
+        if sdf_grid is not None:
+            new_state['sdf_grid'] = sdf_grid  # [B, 1, D, H, W]
+            new_state['sdf_indices'] = sdf_indices  # [N, 4]
+            new_state['sdf_spatial_shape'] = sdf_spatial_shape  # [D, H, W]
+            new_state['sdf_resolution'] = sdf_resolution  # float
 
         # 为了向后兼容，添加一个默认的coords和batch_inds
         # 这些不是真实的体素坐标，只是为了兼容旧的PoseProjection
