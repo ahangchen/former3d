@@ -439,6 +439,15 @@ def autocast_norm(layer_class):
             return output
     return AutocastNorm
 
+# 使用InstanceNorm代替BatchNorm，避免batch size限制
+# InstanceNorm在每个样本上归一化，不依赖batch size
+class InstanceNorm1d(nn.InstanceNorm1d):
+    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True,
+                 track_running_stats=True):
+        super(InstanceNorm1d, self).__init__(num_features, eps, momentum, affine,
+                                               track_running_stats)
+        self.track_running_stats = False  # 强制禁用running stats
+
 
 class SparseResNet(nn.Module):
     def __init__(self, input_dim=256, hidden_dim=128, output_dim=32):

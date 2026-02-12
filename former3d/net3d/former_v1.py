@@ -47,11 +47,19 @@ class Former3D(nn.Module):
         else:
             nums_blocks = [2, 2, 2, 2]  # 旧格式，保持默认2层
         
+        # 使用InstanceNorm代替BatchNorm，避免batch size限制
+        class InstanceNorm1d(nn.InstanceNorm1d):
+            def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True,
+                         track_running_stats=True):
+                super(InstanceNorm1d, self).__init__(num_features, eps, momentum, affine,
+                                                   track_running_stats)
+                self.track_running_stats = False  # 强制禁用running stats
+        
         if self.sync_bn == True:
-            BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm1d))
+            BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(InstanceNorm1d))
             BatchNorm3d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm3d))
         else:
-            BatchNorm1d = (change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm1d))
+            BatchNorm1d = (change_default_args(eps=1e-3, momentum=0.01)(InstanceNorm1d))
             BatchNorm3d = (change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm3d))
         LayerNorm = autocast_norm(change_default_args(eps=1e-3)(nn.LayerNorm))
         SubMConv3d = change_default_args(bias=False)(spconv.SubMConv3d)
