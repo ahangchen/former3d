@@ -19,7 +19,7 @@ ATTN_LAYERS=0          # 禁用attention layers以节省显存
 ATTN_HEADS=1           # 注意力头数
 FUSION_RADIUS=0        # 禁用stream fusion
 ENABLE_MEMORY_PROFILE=true  # 启用显存分析
-MEMORY_PROFILE_OUTPUT="logs/memory_profile"  # 显存分析输出路径
+MEMORY_PROFILE_OUTPUT="logs/memory_profile_multigpu"  # 显存分析输出路径
 
 # 显存和性能配置
 NUM_WORKERS=4

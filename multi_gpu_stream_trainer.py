@@ -45,6 +45,16 @@ class MultiGPUStreamTrainer:
             for src_param, dst_param in zip(src_model.parameters(), dst_model.parameters()):
                 dst_param.data.copy_(src_param.data)
 
+    def parameters(self):
+        """
+        返回主GPU模型的参数迭代器
+        用于创建优化器
+
+        Returns:
+            参数迭代器
+        """
+        return self.models[0].parameters()
+
     def forward_sequence(self,
                         images: torch.Tensor,
                         poses: torch.Tensor,
