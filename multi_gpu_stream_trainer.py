@@ -25,10 +25,12 @@ class MultiGPUStreamTrainer:
         self.gpu_ids = gpu_ids
         self.num_gpus = len(gpu_ids)
 
-        # 将模型复制到每个GPU
+        # 将模型复制到每个GPU（使用deepcopy确保完全独立）
+        import copy
         self.models = nn.ModuleList()
         for gpu_id in gpu_ids:
-            model_copy = model.to(f'cuda:{gpu_id}')
+            model_copy = copy.deepcopy(model)
+            model_copy = model_copy.to(f'cuda:{gpu_id}')
             self.models.append(model_copy)
 
         # 同步模型参数

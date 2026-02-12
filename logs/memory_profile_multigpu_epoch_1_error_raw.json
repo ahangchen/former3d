@@ -1,0 +1,24 @@
+[
+  {
+    "step": -1,
+    "frame": -1,
+    "layer": "\u5f02\u5e38",
+    "label": "\u8bad\u7ec3\u5f02\u5e38: RuntimeError",
+    "timestamp": 1770900435.3486707,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 15.0322265625,
+        "reserved_mb": 80.0,
+        "max_allocated_mb": 78.044921875,
+        "max_reserved_mb": 80.0
+      },
+      "1": {
+        "allocated_mb": 85.54638671875,
+        "reserved_mb": 100.0,
+        "max_allocated_mb": 85.54638671875,
+        "max_reserved_mb": 100.0
+      }
+    },
+    "error": "Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cuda:1! (when checking argument for argument weight in method wrapper__cudnn_convolution)"
+  }
+]
