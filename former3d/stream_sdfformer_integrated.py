@@ -338,6 +338,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
         # 添加流式组件
         self.pose_projection = PoseProjection()
+        # 新版本：PoseBasedFeatureProjection用于多尺度特征和SDF投影
+        self.pose_based_projection = PoseBasedFeatureProjection(voxel_size=voxel_size)
 
         # 注意：原始SDFFormer输出特征维度为1，但流式融合需要更大维度
         # 这里我们使用线性层进行特征维度的扩展和压缩
@@ -505,29 +507,36 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
         return voxel_inds
     
-    def extract_historical_features(self, 
+    def extract_historical_features(self,
                                    historical_state: Dict,
                                    current_pose: torch.Tensor) -> Dict:
         """从历史状态提取特征用于流式融合
-        
+
         Args:
             historical_state: 历史状态字典
             current_pose: 当前帧相机位姿 [batch, 4, 4]
-            
+
         Returns:
             处理后的历史特征字典
         """
         if historical_state is None:
             return None
-        
-        # 投影历史状态到当前坐标系
-        projected_state = self.pose_projection(
-            historical_state, 
-            self.historical_pose, 
-            current_pose
-        )
-        
-        return projected_state
+
+        # 检查是否有新的dense_grids格式（Phase 3改进版）
+        if 'dense_grids' in historical_state:
+            # 新格式：直接返回，包含dense_grids和SDF
+            # _apply_stream_fusion会直接使用这些字段
+            return historical_state
+        else:
+            # 旧格式：使用PoseProjection处理
+            # 向后兼容，但不会包含dense_grids
+            projected_state = self.pose_projection(
+                historical_state,
+                self.historical_pose,
+                current_pose
+            )
+
+            return projected_state
     
     def forward_single_frame(self, 
                             images: torch.Tensor,
@@ -704,7 +713,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
         # 提取当前和历史pose
         historical_pose = self.historical_pose  # [B, 4, 4]
-        T_ch = self.pose_projection.compute_transform(historical_pose, current_pose)  # [B, 4, 4]
+        T_ch = self.pose_based_projection.compute_transform(historical_pose, current_pose)  # [B, 4, 4]
 
         print(f"[StreamFusion] pose变换T_ch: {T_ch.shape}")
 
@@ -754,7 +763,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
             transformed_voxel_coords = transformed_coords / resolution
 
             # 归一化坐标到[-1, 1]
-            normalized_coords = self.pose_projection.normalize_coords(
+            normalized_coords = self.pose_based_projection.normalize_coords(
                 transformed_voxel_coords, spatial_shape
             )  # [N_process, 3]
 
@@ -848,7 +857,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
             try:
                 # 投影SDF
-                projected_sdf = self.pose_projection.project_sdf(
+                projected_sdf = self.pose_based_projection.project_sdf(
                     sdf_grid,
                     sdf_indices,
                     current_coords,  # 使用当前特征的坐标
