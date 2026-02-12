@@ -7,13 +7,13 @@ cd /home/cwh/coding/former3d
 # 基础配置
 export CUDA_VISIBLE_DEVICES=0,1
 
-# 训练参数（双GPU，batch_size=2每张GPU，crop_size=10x10x6）
+# 训练参数（双GPU，batch_size=2每张GPU，crop_size=8x8x6）
 BATCH_SIZE=2          # 单张GPU的batch size
 SEQUENCE_LENGTH=10      # 序列长度
 EPOCHS=2
 LEARNING_RATE=1e-4
 MAX_SEQUENCES=5        # 每个epoch的序列数
-CROP_SIZE="10,10,6"    # 较小的crop size (depth,height,width)
+CROP_SIZE="8,8,6"      # 更小的crop size (depth,height,width)
 USE_LIGHTWEIGHT=true   # 启用lightweight模式
 ATTN_LAYERS=0          # 禁用attention layers以节省显存
 ATTN_HEADS=1           # 注意力头数
