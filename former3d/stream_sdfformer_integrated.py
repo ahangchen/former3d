@@ -214,6 +214,93 @@ class PoseBasedFeatureProjection:
 
         return projected_features
 
+    def project_sdf(self,
+                    historical_sdf_grid: torch.Tensor,
+                    historical_indices: torch.Tensor,
+                    current_indices: torch.Tensor,
+                    T_ch: torch.Tensor,
+                    spatial_shape: Tuple[int, int, int],
+                    resolution: float) -> torch.Tensor:
+        """
+        投影历史SDF到当前体素坐标
+
+        Args:
+            historical_sdf_grid: [B, 1, D, H, W] 历史SDF密集网格
+            historical_indices: [N, 4] 历史体素索引 (b, x, y, z)
+            current_indices: [N, 4] 当前体素索引 (b, x, y, z)
+            T_ch: [B, 4, 4] 从历史到当前pose的变换
+            spatial_shape: (D, H, W) 空间形状
+            resolution: 体素分辨率
+
+        Returns:
+            projected_sdf: [N, 1] 投影到当前坐标的SDF值
+        """
+        device = historical_sdf_grid.device
+        num_points = current_indices.shape[0]
+        batch_size = historical_sdf_grid.shape[0]
+
+        # 提取历史坐标并转换为世界坐标
+        # historical_indices格式: [b, x, y, z]
+        historical_coords = historical_indices[:, 1:4].float()  # [N, 3]
+        historical_coords = historical_coords * self.voxel_size  # 世界坐标
+
+        # 添加齐次坐标
+        ones = torch.ones(num_points, 1, device=device, dtype=historical_coords.dtype)
+        historical_coords_homo = torch.cat([historical_coords, ones], dim=1)  # [N, 4]
+
+        # 提取batch索引
+        batch_indices = current_indices[:, 0].long()  # [N]
+
+        # 检查batch索引是否在有效范围内
+        if (batch_indices < 0).any() or (batch_indices >= batch_size).any():
+            print(f"[project_sdf] 警告：batch索引超出范围，min={batch_indices.min()}, max={batch_indices.max()}, batch_size={batch_size}")
+            batch_indices = torch.clamp(batch_indices, 0, batch_size - 1)
+
+        T_ch_batch = T_ch[batch_indices]  # [N, 4, 4]
+
+        # 变换坐标到当前相机坐标系
+        transformed_coords_homo = torch.bmm(T_ch_batch, historical_coords_homo.unsqueeze(-1))
+        transformed_coords = transformed_coords_homo.squeeze(-1)[:, :3]  # [N, 3]
+
+        # 转换回体素坐标
+        transformed_voxel_coords = transformed_coords / resolution  # [N, 3]
+
+        # 归一化坐标到[-1, 1]
+        normalized_coords = self.normalize_coords(transformed_voxel_coords, spatial_shape)
+
+        # 裁剪坐标到有效范围
+        normalized_coords = torch.clamp(normalized_coords, -1.0, 1.0)
+
+        # 使用grid_sample采样
+        grid = normalized_coords.view(1, 1, 1, num_points, 3)  # [1, 1, 1, N, 3]
+        grid = grid.expand(batch_size, -1, -1, -1, -1)  # [B, 1, 1, N, 3]
+
+        # 采样
+        sampled = F.grid_sample(
+            historical_sdf_grid,  # [B, 1, D, H, W]
+            grid,                  # [B, 1, 1, N, 3]
+            mode='bilinear',
+            padding_mode='zeros',
+            align_corners=False
+        )  # [B, 1, 1, 1, N]
+
+        # 提取采样的SDF值
+        projected_sdf = []
+        for b in range(batch_size):
+            mask = batch_indices == b
+            if mask.any():
+                projected_sdf.append(sampled[b, 0, 0, 0, mask])
+            else:
+                projected_sdf.append(torch.zeros(
+                    (0, 1),
+                    device=device,
+                    dtype=historical_sdf_grid.dtype
+                ))
+
+        projected_sdf = torch.cat(projected_sdf, dim=0)  # [N, 1]
+
+        return projected_sdf
+
 
 class StreamSDFFormerIntegrated(SDFFormer):
     """流式SDFFormer集成版本
