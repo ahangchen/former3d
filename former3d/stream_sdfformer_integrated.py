@@ -550,6 +550,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
         elif self.lightweight_state_mode and 'sparse_indices' in historical_state:
             # Lightweight模式第一帧：没有dense_grids，但需要兼容旧格式
             # 创建临时coords字段用于向后兼容
+            print(f"[Debug] Lightweight模式检查: sparse_indices={('sparse_indices' in historical_state)}, "
+                  f"lightweight={self.lightweight_state_mode}, dense_grids={('dense_grids' in historical_state)}")
             if 'coords' not in historical_state and 'sparse_indices' in historical_state:
                 # 使用第一个分辨率的sparse_indices创建临时coords
                 sparse_inds = historical_state['sparse_indices']
@@ -561,8 +563,10 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 historical_state['coords'] = coords
                 historical_state['features'] = features
                 historical_state['batch_inds'] = indices[:, 3]  # batch索引
+                print(f"[Debug] 创建临时coords: shape={coords.shape}")
             return historical_state
         else:
+            print(f"[Debug] 进入else分支! lightweight={self.lightweight_state_mode}, sparse_indices={('sparse_indices' in historical_state)}, dense_grids={('dense_grids' in historical_state)}")
             # 旧格式：使用PoseProjection处理
             # 向后兼容，但不会包含dense_grids
             projected_state = self.pose_projection(
