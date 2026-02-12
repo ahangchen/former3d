@@ -7,14 +7,14 @@ cd /home/cwh/coding/former3d
 # 基础配置
 export CUDA_VISIBLE_DEVICES=0,1
 
-# 训练参数（batch_size=4满足BatchNorm要求）
+# 训练参数（双GPU，batch_size=4每张GPU，crop_size=8x8x6）
 BATCH_SIZE=4          # 单张GPU的batch size
 SEQUENCE_LENGTH=10      # 序列长度
 EPOCHS=2
 LEARNING_RATE=1e-4
 MAX_SEQUENCES=5        # 每个epoch的序列数
-CROP_SIZE="16,16,12"   # 小的crop size (depth,height,width)
-USE_LIGHTWEIGHT=false  # 禁用lightweight模式
+CROP_SIZE="8,8,6"      # 极小的crop size (depth,height,width)
+USE_LIGHTWEIGHT=true   # 启用lightweight模式
 ATTN_LAYERS=0          # 禁用attention layers以节省显存
 ATTN_HEADS=1           # 注意力头数
 FUSION_RADIUS=0        # 禁用stream fusion
@@ -23,8 +23,9 @@ FUSION_RADIUS=0        # 禁用stream fusion
 NUM_WORKERS=4
 MEMORY_THRESHOLD=8.0     # 8GB显存阈值
 
-# GPU配置（单GPU模式，使用GPU 0）
-USE_MULTI_GPU=false
+# GPU配置（双GPU模式）
+USE_MULTI_GPU=true
+GPU_IDS="0 1"
 
 # 日志和检查点
 LOG_DIR="./logs/optimized_2gpu_$(date +%Y%m%d_%H%M%S)"
@@ -58,6 +59,12 @@ else
     LIGHTWEIGHT_ARG=""
 fi
 
+if [ "$USE_MULTI_GPU" = "true" ]; then
+    MULTI_GPU_ARG="--multi-gpu --gpu-ids $GPU_IDS"
+else
+    MULTI_GPU_ARG=""
+fi
+
 /home/cwh/miniconda3/envs/former3d/bin/python train_stream_integrated.py \
     --batch-size $BATCH_SIZE \
     --learning-rate $LEARNING_RATE \
@@ -68,7 +75,7 @@ fi
     --data-root /home/cwh/Study/dataset/tartanair \
     --num-workers $NUM_WORKERS \
     --memory-threshold $MEMORY_THRESHOLD \
-    --device cuda:0 \
+    $MULTI_GPU_ARG \
     --attn-layers $ATTN_LAYERS \
     --attn-heads $ATTN_HEADS \
     --fusion-radius $FUSION_RADIUS \
