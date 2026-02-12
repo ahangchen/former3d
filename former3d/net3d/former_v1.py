@@ -50,11 +50,14 @@ class Former3D(nn.Module):
         # 使用LayerNorm代替BatchNorm1d，避免batch size限制
         # LayerNorm在最后一个维度上归一化，不依赖batch size
         class LayerNorm1d(nn.Module):
-            def __init__(self, num_features, eps=1e-5, affine=True):
+            def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True,
+                         track_running_stats=True):
                 super(LayerNorm1d, self).__init__()
                 self.num_features = num_features
                 self.eps = eps
+                self.momentum = momentum  # 保留参数以兼容
                 self.affine = affine
+                self.track_running_stats = track_running_stats
                 if self.affine:
                     self.weight = nn.Parameter(torch.ones(num_features))
                     self.bias = nn.Parameter(torch.zeros(num_features))
