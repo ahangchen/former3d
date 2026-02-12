@@ -558,7 +558,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 # 从indices创建coords（米为单位）
                 coords = indices[:, :3].float() * self.resolutions[first_res]
                 historical_state['coords'] = coords
-                historical_state['features'] = torch.randn(indices.shape[0], 128, device=coords.device)
+                historical_state['features'] = features
+                historical_state['batch_inds'] = indices[:, 3]  # batch索引
             return historical_state
         else:
             # 旧格式：使用PoseProjection处理
