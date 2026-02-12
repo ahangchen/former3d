@@ -123,6 +123,7 @@ def parse_args():
     parser.add_argument('--voxel-size', type=float, default=0.16, help='体素大小')
     parser.add_argument('--crop-size', type=str, default='12,12,8', help='裁剪尺寸')
     parser.add_argument('--use-lightweight', action='store_true', help='启用轻量级状态模式（减少显存占用）')
+    parser.add_argument('--fusion-radius', type=float, default=2.0, help='流式融合半径（设为0禁用融合）')
 
     # 数据参数
     parser.add_argument('--data-root', type=str, default='/home/cwh/Study/dataset/tartanair', help='TartanAir原始数据根目录')
@@ -171,7 +172,7 @@ def create_model(args, device):
         attn_layers=args.attn_layers,
         use_proj_occ=False,  # 禁用投影占用以获取SDF输出
         voxel_size=args.voxel_size,
-        fusion_local_radius=2.0,
+        fusion_local_radius=args.fusion_radius,
         crop_size=crop_size
     )
 
