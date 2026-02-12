@@ -4,11 +4,11 @@
       "record_count": 2,
       "gpu_stats": {
         "0": {
-          "min_allocated_mb": 0.0,
-          "max_allocated_mb": 15.0234375,
-          "avg_allocated_mb": 7.51171875,
-          "min_reserved_mb": 80.0,
-          "max_reserved_mb": 80.0
+          "min_allocated_mb": 78.044921875,
+          "max_allocated_mb": 93.068359375,
+          "avg_allocated_mb": 85.556640625,
+          "min_reserved_mb": 236.0,
+          "max_reserved_mb": 236.0
         },
         "1": {
           "min_allocated_mb": 78.044921875,
@@ -25,11 +25,11 @@
       "record_count": 2,
       "gpu_stats": {
         "0": {
-          "min_allocated_mb": 0.0,
-          "max_allocated_mb": 15.0234375,
-          "avg_allocated_mb": 7.51171875,
-          "min_reserved_mb": 80.0,
-          "max_reserved_mb": 80.0
+          "min_allocated_mb": 78.044921875,
+          "max_allocated_mb": 93.068359375,
+          "avg_allocated_mb": 85.556640625,
+          "min_reserved_mb": 236.0,
+          "max_reserved_mb": 236.0
         },
         "1": {
           "min_allocated_mb": 78.044921875,
@@ -46,11 +46,11 @@
       "record_count": 1,
       "gpu_stats": {
         "0": {
-          "min_allocated_mb": 0.0,
-          "max_allocated_mb": 0.0,
-          "avg_allocated_mb": 0.0,
-          "min_reserved_mb": 80.0,
-          "max_reserved_mb": 80.0
+          "min_allocated_mb": 78.044921875,
+          "max_allocated_mb": 78.044921875,
+          "avg_allocated_mb": 78.044921875,
+          "min_reserved_mb": 236.0,
+          "max_reserved_mb": 236.0
         },
         "1": {
           "min_allocated_mb": 78.044921875,
@@ -65,11 +65,11 @@
       "record_count": 1,
       "gpu_stats": {
         "0": {
-          "min_allocated_mb": 15.0234375,
-          "max_allocated_mb": 15.0234375,
-          "avg_allocated_mb": 15.0234375,
-          "min_reserved_mb": 80.0,
-          "max_reserved_mb": 80.0
+          "min_allocated_mb": 93.068359375,
+          "max_allocated_mb": 93.068359375,
+          "avg_allocated_mb": 93.068359375,
+          "min_reserved_mb": 236.0,
+          "max_reserved_mb": 236.0
         },
         "1": {
           "min_allocated_mb": 78.044921875,
@@ -83,10 +83,10 @@
   },
   "current_memory": {
     "0": {
-      "allocated_mb": 15.0234375,
-      "reserved_mb": 80.0,
-      "max_allocated_mb": 78.044921875,
-      "max_reserved_mb": 80.0
+      "allocated_mb": 93.068359375,
+      "reserved_mb": 236.0,
+      "max_allocated_mb": 234.134765625,
+      "max_reserved_mb": 236.0
     },
     "1": {
       "allocated_mb": 78.044921875,

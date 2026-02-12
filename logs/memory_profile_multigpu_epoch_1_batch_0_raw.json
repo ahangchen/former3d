@@ -4,13 +4,13 @@
     "frame": -1,
     "layer": "\u8bad\u7ec3\u5f00\u59cb",
     "label": "\u8bad\u7ec3\u5f00\u59cb",
-    "timestamp": 1770900434.7096586,
+    "timestamp": 1770900460.7517302,
     "gpu_info": {
       "0": {
-        "allocated_mb": 0.0,
-        "reserved_mb": 80.0,
-        "max_allocated_mb": 78.044921875,
-        "max_reserved_mb": 80.0
+        "allocated_mb": 78.044921875,
+        "reserved_mb": 236.0,
+        "max_allocated_mb": 234.134765625,
+        "max_reserved_mb": 236.0
       },
       "1": {
         "allocated_mb": 78.044921875,
@@ -25,13 +25,13 @@
     "frame": -1,
     "layer": "\u6570\u636e\u52a0\u8f7d",
     "label": "Batch 0 \u6570\u636e\u52a0\u8f7d\u540e",
-    "timestamp": 1770900435.105592,
+    "timestamp": 1770900461.1761668,
     "gpu_info": {
       "0": {
-        "allocated_mb": 15.0234375,
-        "reserved_mb": 80.0,
-        "max_allocated_mb": 78.044921875,
-        "max_reserved_mb": 80.0
+        "allocated_mb": 93.068359375,
+        "reserved_mb": 236.0,
+        "max_allocated_mb": 234.134765625,
+        "max_reserved_mb": 236.0
       },
       "1": {
         "allocated_mb": 78.044921875,

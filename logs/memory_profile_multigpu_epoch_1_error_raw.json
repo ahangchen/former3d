@@ -3,14 +3,14 @@
     "step": -1,
     "frame": -1,
     "layer": "\u5f02\u5e38",
-    "label": "\u8bad\u7ec3\u5f02\u5e38: RuntimeError",
-    "timestamp": 1770900435.3486707,
+    "label": "\u8bad\u7ec3\u5f02\u5e38: ValueError",
+    "timestamp": 1770900461.8371084,
     "gpu_info": {
       "0": {
-        "allocated_mb": 15.0322265625,
-        "reserved_mb": 80.0,
-        "max_allocated_mb": 78.044921875,
-        "max_reserved_mb": 80.0
+        "allocated_mb": 474.408203125,
+        "reserved_mb": 496.0,
+        "max_allocated_mb": 485.73779296875,
+        "max_reserved_mb": 496.0
       },
       "1": {
         "allocated_mb": 85.54638671875,
@@ -19,6 +19,6 @@
         "max_reserved_mb": 100.0
       }
     },
-    "error": "Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cuda:1! (when checking argument for argument weight in method wrapper__cudnn_convolution)"
+    "error": "Expected more than 1 value per channel when training, got input size torch.Size([1, 1536, 1, 1, 1])"
   }
 ]
