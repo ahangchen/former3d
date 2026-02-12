@@ -42,11 +42,11 @@ class Former3D(nn.Module):
         nums_blocks = [2, 2, 2, 2]
         
         if self.sync_bn == True:
-            BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm1d))
-            BatchNorm3d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm3d))
+            BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm1d))
+            BatchNorm3d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm3d))
         else:
-            BatchNorm1d = (change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm1d))
-            BatchNorm3d = (change_default_args(eps=1e-3, momentum=0.01)(nn.BatchNorm3d))
+            BatchNorm1d = (change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm1d))
+            BatchNorm3d = (change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm3d))
         LayerNorm = autocast_norm(change_default_args(eps=1e-3)(nn.LayerNorm))
         SubMConv3d = change_default_args(bias=False)(spconv.SubMConv3d)
         SpConv3d = change_default_args(bias=False)(spconv.SparseConv3d)

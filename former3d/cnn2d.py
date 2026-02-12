@@ -23,28 +23,28 @@ class MnasMulti(torch.nn.Module):
         final_chs = 80
 
         self.inner1 = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(output_depths[1]),
+            torch.nn.BatchNorm2d(output_depths[1], track_running_stats=False),
             torch.nn.ReLU(True),
             torch.nn.Conv2d(output_depths[1], final_chs, 1, bias=False),
         )
         self.inner2 = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(output_depths[2]),
+            torch.nn.BatchNorm2d(output_depths[2], track_running_stats=False),
             torch.nn.ReLU(True),
             torch.nn.Conv2d(output_depths[2], final_chs, 1, bias=False),
         )
 
         self.out1 = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(final_chs),
+            torch.nn.BatchNorm2d(final_chs, track_running_stats=False),
             torch.nn.ReLU(True),
             torch.nn.Conv2d(final_chs, output_depths[0], 1, bias=False),
         )
         self.out2 = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(final_chs),
+            torch.nn.BatchNorm2d(final_chs, track_running_stats=False),
             torch.nn.ReLU(True),
             torch.nn.Conv2d(final_chs, output_depths[1], 3, bias=False, padding=1),
         )
         self.out3 = torch.nn.Sequential(
-            torch.nn.BatchNorm2d(final_chs),
+            torch.nn.BatchNorm2d(final_chs, track_running_stats=False),
             torch.nn.ReLU(True),
             torch.nn.Conv2d(final_chs, output_depths[2], 3, bias=False, padding=1),
         )

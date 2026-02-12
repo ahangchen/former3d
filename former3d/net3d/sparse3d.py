@@ -445,13 +445,13 @@ class SparseResNet(nn.Module):
         super().__init__()
         self.spconv1 = spconv.SparseSequential(
                 spconv.SparseConv3d(input_dim, hidden_dim, 3, 1, 1), # just like nn.Conv3d but don't support group
-                nn.BatchNorm1d(hidden_dim), # non-spatial layers can be used directly in SparseSequential.
+                nn.BatchNorm1d(hidden_dim, track_running_stats=False), # 不依赖batch size
                 nn.ReLU())
         self.block1 = SparseBasicBlock(hidden_dim, hidden_dim, indice_key='block1')
         self.block2 = SparseBasicBlock(hidden_dim, hidden_dim, indice_key='block2')
         self.spconv2 = spconv.SparseSequential(
                 spconv.SparseConv3d(hidden_dim, output_dim, 3, 1, 1),
-                nn.BatchNorm1d(output_dim),
+                nn.BatchNorm1d(output_dim, track_running_stats=False), # 不依赖batch size
                 nn.ReLU())
 
     def forward(self, x):
@@ -473,10 +473,10 @@ class SparseBasicBlock(spconv.SparseModule):
                  indice_key=None):
         super(SparseBasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride, indice_key=indice_key)
-        self.bn1 = nn.BatchNorm1d(planes)
+        self.bn1 = nn.BatchNorm1d(planes, track_running_stats=False) # 不依赖batch size
         self.relu = nn.ReLU()
         self.conv2 = conv3x3(planes, planes, indice_key=indice_key)
-        self.bn2 = nn.BatchNorm1d(planes)
+        self.bn2 = nn.BatchNorm1d(planes, track_running_stats=False) # 不依赖batch size
         self.downsample = downsample
         self.stride = stride
 

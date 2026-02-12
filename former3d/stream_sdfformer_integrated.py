@@ -373,7 +373,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
         # 注意：历史特征可能是不同维度（fine=16, medium=48, coarse=96），会动态对齐到128
         self.fusion_3d = nn.Sequential(
             nn.Conv3d(257, 128, kernel_size=3, padding=1),
-            nn.BatchNorm3d(128),
+            nn.BatchNorm3d(128, track_running_stats=False),
             nn.ReLU(),
             nn.Conv3d(128, 128, kernel_size=1),
             nn.ReLU()

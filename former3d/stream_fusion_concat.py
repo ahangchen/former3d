@@ -73,7 +73,7 @@ class ConcatFusion3D(nn.Module):
             )
 
             # BatchNorm和ReLU
-            self.convs.append(nn.BatchNorm1d(self.hidden_dim))
+            self.convs.append(nn.BatchNorm1d(self.hidden_dim, track_running_stats=False))
             self.convs.append(nn.ReLU(inplace=True))
 
         # 输出投影：hidden_dim -> feature_dim
