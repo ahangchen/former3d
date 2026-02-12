@@ -1103,16 +1103,12 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
         # 轻量级模式：删除dense_grids等大内存占用字段
         if self.lightweight_state_mode and projected_features is not None:
-            # 只保留投影后的特征，删除原始密集网格以节省显存
+            # 只删除大的密集网格，保留sparse_indices等元数据
+            # 保留sparse_indices、spatial_shapes、resolutions用于后续投影
+            # 只删除dense_grids和sdf_grid这些大的密集网格
             new_state.pop('dense_grids', None)
-            new_state.pop('sparse_indices', None)
-            new_state.pop('spatial_shapes', None)
-            new_state.pop('resolutions', None)
             new_state.pop('sdf_grid', None)
-            new_state.pop('sdf_indices', None)
-            new_state.pop('sdf_spatial_shape', None)
-            new_state.pop('sdf_resolution', None)
-            print(f"[Lightweight Mode] 只保存投影特征，跳过dense_grids")
+            print(f"[Lightweight Mode] 只保存投影特征和sparse indices，跳过dense_grids")
 
         return new_state
 
