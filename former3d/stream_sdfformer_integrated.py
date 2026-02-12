@@ -832,6 +832,66 @@ class StreamSDFFormerIntegrated(SDFFormer):
             else:
                 fused = current_feats
 
+        # Phase 3: 投影和融合历史SDF
+        projected_sdf = None
+
+        if 'sdf_grid' in historical_features:
+            sdf_grid = historical_features['sdf_grid']  # [B, 1, D, H, W]
+            sdf_indices = historical_features['sdf_indices']  # [N_sdf, 4]
+            sdf_spatial_shape = historical_features['sdf_spatial_shape']  # [D, H, W]
+            sdf_resolution = historical_features['sdf_resolution']  # float
+
+            print(f"[StreamFusion] Phase 3: 开始SDF投影")
+            print(f"  SDF网格: {sdf_grid.shape}")
+            print(f"  SDF索引: {sdf_indices.shape}")
+            print(f"  SDF分辨率: {sdf_resolution}")
+
+            try:
+                # 投影SDF
+                projected_sdf = self.pose_projection.project_sdf(
+                    sdf_grid,
+                    sdf_indices,
+                    current_coords,  # 使用当前特征的坐标
+                    T_ch,
+                    sdf_spatial_shape,
+                    sdf_resolution
+                )  # [N, 1]
+
+                print(f"[StreamFusion] SDF投影成功: {projected_sdf.shape}")
+
+            except Exception as e:
+                print(f"[StreamFusion] SDF投影失败: {e}")
+                projected_sdf = None
+
+        # Phase 3: 融合历史SDF到当前预测
+        if projected_sdf is not None:
+            # 检查形状是否匹配
+            if projected_sdf.shape[0] == fused.shape[0]:
+                sdf_weight = 0.3  # 历史SDF权重，可根据需要调整
+
+                # 假设融合特征的第一维是SDF（或与SDF相关）
+                # 简化：将历史SDF融合到特征的第一维
+                if fused.shape[1] > 0:
+                    current_sdf = fused[:, :1]  # 提取第一维作为当前SDF
+
+                    # 加权融合
+                    fused_sdf = sdf_weight * projected_sdf + (1 - sdf_weight) * current_sdf
+
+                    # 替换融合后的SDF
+                    fused[:, :1] = fused_sdf
+
+                    print(f"[StreamFusion] Phase 3: SDF融合完成")
+                    print(f"  SDF权重: {sdf_weight}")
+                    print(f"  当前SDF统计: mean={current_sdf.mean().item():.4f}, std={current_sdf.std().item():.4f}")
+                    print(f"  投影SDF统计: mean={projected_sdf.mean().item():.4f}, std={projected_sdf.std().item():.4f}")
+                    print(f"  融合SDF统计: mean={fused_sdf.mean().item():.4f}, std={fused_sdf.std().item():.4f}")
+                else:
+                    print(f"[StreamFusion] Phase 3: 跳过SDF融合（特征维度不足）")
+            else:
+                print(f"[StreamFusion] Phase 3: 跳过SDF融合（形状不匹配: {projected_sdf.shape[0]} vs {fused.shape[0]})")
+        else:
+            print(f"[StreamFusion] Phase 3: 跳过SDF融合（投影失败或不可用）")
+
         return fused
     
     def _update_voxel_outputs(self, voxel_outputs: Dict, fused_features: torch.Tensor) -> Dict:
