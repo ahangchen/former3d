@@ -122,6 +122,7 @@ def parse_args():
     parser.add_argument('--attn-layers', type=int, default=1, help='注意力层数')
     parser.add_argument('--voxel-size', type=float, default=0.16, help='体素大小')
     parser.add_argument('--crop-size', type=str, default='12,12,8', help='裁剪尺寸')
+    parser.add_argument('--use-lightweight', action='store_true', help='启用轻量级状态模式（减少显存占用）')
 
     # 数据参数
     parser.add_argument('--data-root', type=str, default='/home/cwh/Study/dataset/tartanair', help='TartanAir原始数据根目录')
@@ -194,6 +195,15 @@ def create_model(args, device):
             logger.info(f"仅使用单个GPU: {gpu_ids}")
     else:
         logger.info(f"使用单GPU/CPU训练")
+
+    # 设置轻量级状态模式
+    if hasattr(model, 'enable_lightweight_state'):
+        if args.use_lightweight:
+            logger.info(f"启用轻量级状态模式")
+            model.enable_lightweight_state(True)
+        else:
+            logger.info(f"禁用轻量级状态模式")
+            model.enable_lightweight_state(False)
 
     logger.info(f"✅ 模型创建成功，参数数量: {sum(p.numel() for p in model.parameters())}")
     logger.info(f"   注意力头数: {args.attn_heads}")

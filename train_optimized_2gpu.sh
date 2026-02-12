@@ -7,13 +7,14 @@ cd /home/cwh/coding/former3d
 # 基础配置
 export CUDA_VISIBLE_DEVICES=0,1
 
-# 训练参数（保守配置，避免OOM）
-BATCH_SIZE=1          # 单张GPU的batch size
+# 训练参数（禁用lightweight模式，使用batch_size=2）
+BATCH_SIZE=2          # 单张GPU的batch size
 SEQUENCE_LENGTH=10      # 序列长度
 EPOCHS=2
 LEARNING_RATE=1e-4
 MAX_SEQUENCES=5        # 每个epoch的序列数
-CROP_SIZE="20,20,12"   # 小的crop size (depth,height,width)
+CROP_SIZE="20,20,12"   # 适中的crop size (depth,height,width)
+USE_LIGHTWEIGHT=false  # 禁用lightweight模式
 
 # 显存和性能配置
 NUM_WORKERS=4
@@ -48,6 +49,12 @@ echo "========================================="
 echo ""
 
 # 启动训练
+if [ "$USE_LIGHTWEIGHT" = "true" ]; then
+    LIGHTWEIGHT_ARG="--use-lightweight"
+else
+    LIGHTWEIGHT_ARG=""
+fi
+
 /home/cwh/miniconda3/envs/former3d/bin/python train_stream_integrated.py \
     --batch-size $BATCH_SIZE \
     --learning-rate $LEARNING_RATE \
@@ -59,4 +66,5 @@ echo ""
     --num-workers $NUM_WORKERS \
     --memory-threshold $MEMORY_THRESHOLD \
     --device cuda:0 \
+    $LIGHTWEIGHT_ARG \
     2>&1 | tee $LOG_DIR/train.log
