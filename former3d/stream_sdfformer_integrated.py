@@ -736,28 +736,52 @@ class StreamSDFFormerIntegrated(SDFFormer):
             print(f"  空间形状: {spatial_shape}")
             print(f"  分辨率: {resolution}")
 
-            # 获取历史坐标
-            historical_coords = sparse_indices[:, 1:4].float()  # [N_historical, 3]
-            historical_coords_homo = torch.cat([
-                historical_coords,
-                torch.ones(historical_coords.shape[0], 1, device=historical_coords.device)
-            ], dim=1)  # [N_historical, 4]
+            # 提取当前体素信息
+            current_coords = current_coords  # [N, 3] (需要是物理坐标）
+            current_batch_inds = current_batch_inds  # [N]
+            num_points = current_coords.shape[0]
 
-            # 批次处理：为每个当前点找到对应的历史点
-            # 简化：使用相同的batch索引
-            batch_size = dense_grid.shape[0]
-            num_historical = sparse_indices.shape[0]
+            # 将历史稀疏索引转换为物理坐标（米）
+            historical_indices_voxel = sparse_indices[:, 1:4].float()  # [N_historical, 3]
+            historical_coords_world = historical_indices_voxel * resolution  # 世界坐标
 
-            # 如果当前点和历史点数量不一致，使用较小的
-            num_process = min(num_points, num_historical)
+            # 提取历史batch索引
+            historical_batch_inds = sparse_indices[:, 0].long()  # [N_historical]
 
-            # 提取历史点并扩展到当前点数量
-            historical_coords_homo = historical_coords_homo[:num_process].expand(num_process, -1, -1)
-            T_ch_expanded = T_ch[:batch_size].expand(num_process, -1, -1)
+            # 创建历史坐标字典（用于project_features）
+            # 需要匹配current_indices的格式
+            # 简化：使用current_batch_inds和current_coords的长度
+            # 但需要确保历史索引和当前索引的数量匹配
+
+            # 检查索引数量是否匹配
+            if sparse_indices.shape[0] != num_points:
+                # 如果不匹配，截断或填充
+                if sparse_indices.shape[0] < num_points:
+                    # 历史点较少，填充零
+                    historical_indices_world = torch.cat([
+                        historical_indices_world,
+                        torch.zeros(num_points - sparse_indices.shape[0], 3, device=dense_grid.device)
+                    ], dim=0)
+                    historical_batch_inds = torch.cat([
+                        historical_batch_inds,
+                        torch.zeros(num_points - sparse_indices.shape[0], dtype=torch.long, device=dense_grid.device)
+                    ], dim=0)
+                else:
+                    # 历史点较多，截断
+                    historical_indices_world = historical_indices_world[:num_points]
+                    historical_batch_inds = historical_batch_inds[:num_points]
+
+            # 转换为齐次坐标
+            ones = torch.ones(num_points, 1, device=dense_grid.device, dtype=historical_indices_world.dtype)
+            historical_coords_homo = torch.cat([historical_indices_world, ones], dim=1)  # [N, 4]
+
+            # 根据batch索引选择变换矩阵
+            batch_indices_for_transform = current_batch_inds  # [N]
+            T_ch_batch = T_ch[batch_indices_for_transform]  # [N, 4, 4]
 
             # 变换历史坐标到当前坐标系
-            transformed_coords_homo = torch.bmm(T_ch_expanded, historical_coords_homo.unsqueeze(-1))
-            transformed_coords = transformed_coords_homo.squeeze(-1)[:, :3]  # [N_process, 3]
+            transformed_coords_homo = torch.bmm(T_ch_batch, historical_coords_homo.unsqueeze(-1))
+            transformed_coords = transformed_coords_homo.squeeze(-1)[:, :3]  # [N, 3]
 
             # 转换回体素坐标
             transformed_voxel_coords = transformed_coords / resolution
@@ -765,21 +789,21 @@ class StreamSDFFormerIntegrated(SDFFormer):
             # 归一化坐标到[-1, 1]
             normalized_coords = self.pose_based_projection.normalize_coords(
                 transformed_voxel_coords, spatial_shape
-            )  # [N_process, 3]
+            )  # [N, 3]
 
             # 裁剪到有效范围
             normalized_coords = torch.clamp(normalized_coords, -1.0, 1.0)
 
             # 使用grid_sample从历史特征网格采样
-            # grid: [1, 1, 1, N_process, 3]
-            grid = normalized_coords.view(1, 1, 1, num_process, 3)
+            # grid: [1, 1, 1, N, 3]
+            grid = normalized_coords.view(1, 1, 1, num_points, 3)
             grid = grid.expand(batch_size, -1, -1, -1, -1)  # [B, 1, 1, N, 3]
 
             print(f"[StreamFusion] {resname} grid: {grid.shape}, range: [{grid.min():.3f}, {grid.max():.3f}]")
 
             # 采样历史特征
             try:
-                projected = F.grid_sample(
+                sampled = F.grid_sample(
                     dense_grid,  # [B, C, D, H, W]
                     grid,      # [B, 1, 1, N, 3]
                     mode='bilinear',
@@ -791,9 +815,16 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 # 根据batch索引提取对应特征
                 projected_res = []
                 for b in range(batch_size):
-                    # 取前num_process个点的特征（因为我们只变换了这么多点）
-                    projected_b = projected[b, :, 0, 0, :num_process].permute(2, 1, 0)  # [N, C]
-                    projected_res.append(projected_b)
+                    mask = batch_indices_for_transform == b
+                    if mask.any():
+                        projected_b = sampled[b, :, 0, 0, mask].permute(2, 1, 0)  # [N_b, C]
+                        projected_res.append(projected_b)
+                    else:
+                        projected_res.append(torch.zeros(
+                            (0, dense_grid.shape[1]),
+                            device=dense_grid.device,
+                            dtype=dense_grid.dtype
+                        ))
 
                 projected_features[resname] = torch.cat(projected_res, dim=0)  # [total, C]
 
