@@ -1056,6 +1056,19 @@ class StreamSDFFormerIntegrated(SDFFormer):
         if projected_features is not None:
             new_state['projected_features'] = projected_features
 
+        # 轻量级模式：删除dense_grids等大内存占用字段
+        if self.lightweight_state_mode and projected_features is not None:
+            # 只保留投影后的特征，删除原始密集网格以节省显存
+            new_state.pop('dense_grids', None)
+            new_state.pop('sparse_indices', None)
+            new_state.pop('spatial_shapes', None)
+            new_state.pop('resolutions', None)
+            new_state.pop('sdf_grid', None)
+            new_state.pop('sdf_indices', None)
+            new_state.pop('sdf_spatial_shape', None)
+            new_state.pop('sdf_resolution', None)
+            print(f"[Lightweight Mode] 只保存投影特征，跳过dense_grids")
+
         return new_state
 
     def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor, current_voxel_indices: Optional[torch.Tensor] = None) -> Dict:
