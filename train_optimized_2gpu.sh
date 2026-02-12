@@ -7,17 +7,19 @@ cd /home/cwh/coding/former3d
 # 基础配置
 export CUDA_VISIBLE_DEVICES=0,1
 
-# 训练参数（双GPU，batch_size=2每张GPU，crop_size=6x6x4）
-BATCH_SIZE=2          # 单张GPU的batch size
+# 训练参数（双GPU，batch_size=2每张GPU，crop_size=10x8x6）
+BATCH_SIZE=2          # 单张GPU的batch size，总batch size=4
 SEQUENCE_LENGTH=10      # 序列长度
 EPOCHS=2
 LEARNING_RATE=1e-4
 MAX_SEQUENCES=5        # 每个epoch的序列数
-CROP_SIZE="6,6,4"      # 极小的crop size (depth,height,width)
+CROP_SIZE="10,8,6"     # 中等crop size (depth,height,width)
 USE_LIGHTWEIGHT=true   # 启用lightweight模式
 ATTN_LAYERS=0          # 禁用attention layers以节省显存
 ATTN_HEADS=1           # 注意力头数
 FUSION_RADIUS=0        # 禁用stream fusion
+ENABLE_MEMORY_PROFILE=true  # 启用显存分析
+MEMORY_PROFILE_OUTPUT="logs/memory_profile"  # 显存分析输出路径
 
 # 显存和性能配置
 NUM_WORKERS=4
@@ -80,4 +82,6 @@ fi
     --attn-heads $ATTN_HEADS \
     --fusion-radius $FUSION_RADIUS \
     $LIGHTWEIGHT_ARG \
+    --enable-memory-profile \
+    --memory-profile-output "$MEMORY_PROFILE_OUTPUT" \
     2>&1 | tee $LOG_DIR/train.log
