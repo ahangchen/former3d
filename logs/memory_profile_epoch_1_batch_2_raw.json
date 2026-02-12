@@ -1,0 +1,707 @@
+[
+  {
+    "step": 0,
+    "frame": -1,
+    "layer": "\u8bad\u7ec3\u5f00\u59cb",
+    "label": "\u8bad\u7ec3\u5f00\u59cb",
+    "timestamp": 1770899903.5961034,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 78.044921875,
+        "reserved_mb": 80.0,
+        "max_allocated_mb": 78.044921875,
+        "max_reserved_mb": 80.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": -1,
+    "layer": "\u6570\u636e\u52a0\u8f7d",
+    "label": "Batch 0 \u6570\u636e\u52a0\u8f7d\u540e",
+    "timestamp": 1770899903.9757645,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 94.068359375,
+        "reserved_mb": 96.0,
+        "max_allocated_mb": 94.068359375,
+        "max_reserved_mb": 96.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "batch_size": 2,
+    "sequence_length": 10,
+    "images_size": 15728640,
+    "poses_size": 1280,
+    "intrinsics_size": 720
+  },
+  {
+    "step": 0,
+    "frame": -1,
+    "layer": "\u524d\u5411\u4f20\u64ad\u524d",
+    "label": "Batch 0 \u524d\u5411\u4f20\u64ad\u524d",
+    "timestamp": 1770899903.9782267,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 94.068359375,
+        "reserved_mb": 96.0,
+        "max_allocated_mb": 94.068359375,
+        "max_reserved_mb": 96.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": -1,
+    "layer": "\u524d\u5411\u4f20\u64ad\u540e",
+    "label": "Batch 0 \u524d\u5411\u4f20\u64ad\u540e",
+    "timestamp": 1770899908.9164655,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "output_keys": [
+      "multiscale_features",
+      "voxel_outputs",
+      "proj_occ_logits",
+      "bp_data",
+      "sdf",
+      "occupancy"
+    ],
+    "states_keys": "dict"
+  },
+  {
+    "step": 0,
+    "frame": 0,
+    "layer": "Frame 0",
+    "label": "Batch 0, Frame 0",
+    "timestamp": 1770899908.9170604,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 1,
+    "layer": "Frame 1",
+    "label": "Batch 0, Frame 1",
+    "timestamp": 1770899908.9178455,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 2,
+    "layer": "Frame 2",
+    "label": "Batch 0, Frame 2",
+    "timestamp": 1770899908.9183896,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 3,
+    "layer": "Frame 3",
+    "label": "Batch 0, Frame 3",
+    "timestamp": 1770899908.9189262,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 4,
+    "layer": "Frame 4",
+    "label": "Batch 0, Frame 4",
+    "timestamp": 1770899908.9196594,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 5,
+    "layer": "Frame 5",
+    "label": "Batch 0, Frame 5",
+    "timestamp": 1770899908.9201927,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 6,
+    "layer": "Frame 6",
+    "label": "Batch 0, Frame 6",
+    "timestamp": 1770899908.9207287,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 7,
+    "layer": "Frame 7",
+    "label": "Batch 0, Frame 7",
+    "timestamp": 1770899908.9217265,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 8,
+    "layer": "Frame 8",
+    "label": "Batch 0, Frame 8",
+    "timestamp": 1770899908.9222667,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 9,
+    "layer": "Frame 9",
+    "label": "Batch 0, Frame 9",
+    "timestamp": 1770899908.9227998,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.08447265625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 9,
+    "layer": "\u635f\u5931\u8ba1\u7b97\u540e",
+    "label": "Batch 0 \u635f\u5931\u8ba1\u7b97\u540e, loss=0.2449",
+    "timestamp": 1770899908.9239504,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 4060.28759765625,
+        "reserved_mb": 4202.0,
+        "max_allocated_mb": 4164.83642578125,
+        "max_reserved_mb": 4202.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": 9,
+    "layer": "\u53cd\u5411\u4f20\u64ad\u540e",
+    "label": "Batch 0 \u53cd\u5411\u4f20\u64ad\u540e",
+    "timestamp": 1770899911.2090871,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 3192.90185546875,
+        "reserved_mb": 4440.0,
+        "max_allocated_mb": 4172.193359375,
+        "max_reserved_mb": 4440.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 9,
+    "layer": "\u6570\u636e\u52a0\u8f7d",
+    "label": "Batch 1 \u6570\u636e\u52a0\u8f7d\u540e",
+    "timestamp": 1770899911.258424,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 3336.58544921875,
+        "reserved_mb": 4442.0,
+        "max_allocated_mb": 4172.193359375,
+        "max_reserved_mb": 4442.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "batch_size": 2,
+    "sequence_length": 10,
+    "images_size": 15728640,
+    "poses_size": 1280,
+    "intrinsics_size": 720
+  },
+  {
+    "step": 1,
+    "frame": 9,
+    "layer": "\u524d\u5411\u4f20\u64ad\u524d",
+    "label": "Batch 1 \u524d\u5411\u4f20\u64ad\u524d",
+    "timestamp": 1770899911.2612267,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 3336.58544921875,
+        "reserved_mb": 4442.0,
+        "max_allocated_mb": 4172.193359375,
+        "max_reserved_mb": 4442.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 9,
+    "layer": "\u524d\u5411\u4f20\u64ad\u540e",
+    "label": "Batch 1 \u524d\u5411\u4f20\u64ad\u540e",
+    "timestamp": 1770899924.6096032,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "output_keys": [
+      "multiscale_features",
+      "voxel_outputs",
+      "proj_occ_logits",
+      "bp_data",
+      "sdf",
+      "occupancy"
+    ],
+    "states_keys": "dict"
+  },
+  {
+    "step": 1,
+    "frame": 0,
+    "layer": "Frame 0",
+    "label": "Batch 1, Frame 0",
+    "timestamp": 1770899924.6101627,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 1,
+    "layer": "Frame 1",
+    "label": "Batch 1, Frame 1",
+    "timestamp": 1770899924.6107183,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 2,
+    "layer": "Frame 2",
+    "label": "Batch 1, Frame 2",
+    "timestamp": 1770899924.6114867,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 3,
+    "layer": "Frame 3",
+    "label": "Batch 1, Frame 3",
+    "timestamp": 1770899924.612014,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 4,
+    "layer": "Frame 4",
+    "label": "Batch 1, Frame 4",
+    "timestamp": 1770899924.6125555,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 5,
+    "layer": "Frame 5",
+    "label": "Batch 1, Frame 5",
+    "timestamp": 1770899924.6132689,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 6,
+    "layer": "Frame 6",
+    "label": "Batch 1, Frame 6",
+    "timestamp": 1770899924.6137993,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 7,
+    "layer": "Frame 7",
+    "label": "Batch 1, Frame 7",
+    "timestamp": 1770899924.6143374,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 8,
+    "layer": "Frame 8",
+    "label": "Batch 1, Frame 8",
+    "timestamp": 1770899924.6150436,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 9,
+    "layer": "Frame 9",
+    "label": "Batch 1, Frame 9",
+    "timestamp": 1770899924.615575,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5639.36767578125,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 9,
+    "layer": "\u635f\u5931\u8ba1\u7b97\u540e",
+    "label": "Batch 1 \u635f\u5931\u8ba1\u7b97\u540e, loss=0.1617",
+    "timestamp": 1770899924.6171775,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5617.5390625,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 1,
+    "frame": 9,
+    "layer": "\u53cd\u5411\u4f20\u64ad\u540e",
+    "label": "Batch 1 \u53cd\u5411\u4f20\u64ad\u540e",
+    "timestamp": 1770899924.6553884,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5226.97021484375,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 2,
+    "frame": 9,
+    "layer": "\u6570\u636e\u52a0\u8f7d",
+    "label": "Batch 2 \u6570\u636e\u52a0\u8f7d\u540e",
+    "timestamp": 1770899924.699503,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 5227.23583984375,
+        "reserved_mb": 8826.0,
+        "max_allocated_mb": 8793.71826171875,
+        "max_reserved_mb": 8826.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "batch_size": 2,
+    "sequence_length": 10,
+    "images_size": 15728640,
+    "poses_size": 1280,
+    "intrinsics_size": 720
+  }
+]

@@ -179,6 +179,15 @@ def create_model(args, device):
     # 移动到设备
     model = model.to(device)
 
+    # 启用轻量级状态模式
+    if hasattr(model, 'enable_lightweight_state'):
+        if args.use_lightweight:
+            logger.info(f"启用轻量级状态模式")
+            model.enable_lightweight_state(True)
+        else:
+            logger.info(f"禁用轻量级状态模式")
+            model.enable_lightweight_state(False)
+
     # 启用多GPU训练
     if torch.cuda.is_available() and (args.multi_gpu or args.gpu_ids is not None):
         # 确定使用的GPU
@@ -189,24 +198,22 @@ def create_model(args, device):
             gpu_ids = list(range(torch.cuda.device_count()))
 
         if len(gpu_ids) > 1:
-            logger.info(f"启用多GPU训练，使用GPU: {gpu_ids}")
-            model = torch.nn.DataParallel(model, device_ids=gpu_ids)
-            logger.info(f"✅ 模型已包装为DataParallel")
+            logger.info(f"启用多GPU流式训练，使用GPU: {gpu_ids}")
+            # 导入多GPU训练器
+            try:
+                from multi_gpu_stream_trainer import MultiGPUStreamTrainer
+                model = MultiGPUStreamTrainer(model, gpu_ids)
+                logger.info(f"✅ 模型已包装为MultiGPUStreamTrainer")
+            except ImportError as e:
+                logger.warning(f"⚠️ 无法导入MultiGPUStreamTrainer，回退到DataParallel: {e}")
+                model = torch.nn.DataParallel(model, device_ids=gpu_ids)
+                logger.info(f"✅ 模型已包装为DataParallel")
         else:
             logger.info(f"仅使用单个GPU: {gpu_ids}")
     else:
         logger.info(f"使用单GPU/CPU训练")
 
-    # 设置轻量级状态模式
-    if hasattr(model, 'enable_lightweight_state'):
-        if args.use_lightweight:
-            logger.info(f"启用轻量级状态模式")
-            model.enable_lightweight_state(True)
-        else:
-            logger.info(f"禁用轻量级状态模式")
-            model.enable_lightweight_state(False)
-
-    logger.info(f"✅ 模型创建成功，参数数量: {sum(p.numel() for p in model.parameters())}")
+    logger.info(f"✅ 模型创建成功，参数数量: {sum(p.numel() for p in model.parameters()) if hasattr(model, 'parameters') else 'N/A (MultiGPU)'}")
     logger.info(f"   注意力头数: {args.attn_heads}")
     logger.info(f"   注意力层数: {args.attn_layers}")
     logger.info(f"   体素大小: {args.voxel_size}")
@@ -610,10 +617,16 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
             profiler.record(f"Batch {batch_idx} 前向传播前")
 
         # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
-        # 如果模型被DataParallel包装，使用model.module.forward_sequence
-        if hasattr(model, 'module'):
+        # 支持DataParallel和MultiGPUStreamTrainer两种包装方式
+        from multi_gpu_stream_trainer import MultiGPUStreamTrainer
+        if isinstance(model, MultiGPUStreamTrainer) or hasattr(model, 'models'):
+            # MultiGPUStreamTrainer
+            outputs, states = model.forward_sequence(images, poses, intrinsics)
+        elif hasattr(model, 'module'):
+            # DataParallel
             outputs, states = model.module.forward_sequence(images, poses, intrinsics)
         else:
+            # 无包装的模型
             outputs, states = model.forward_sequence(images, poses, intrinsics)
 
         # 记录前向传播后的显存
@@ -775,11 +788,18 @@ def train_epoch_stream(model, dataloader, optimizer, device, args, epoch):
             logger.info(f"Validation Batch {batch_idx}: images shape={images.shape}, poses shape={poses.shape}, intrinsics shape={intrinsics.shape}")
 
         # 调用模型的forward_sequence，内部处理序列（frame_idx循环在模型内部）
-        # 如果模型被DataParallel包装，使用model.module.forward_sequence
-        if hasattr(model, 'module'):
+        # 支持DataParallel和MultiGPUStreamTrainer两种包装方式
+        from multi_gpu_stream_trainer import MultiGPUStreamTrainer
+        if isinstance(model, MultiGPUStreamTrainer) or hasattr(model, 'models'):
+            # MultiGPUStreamTrainer
+            outputs, states = model.forward_sequence(images, poses, intrinsics)
+        elif hasattr(model, 'module'):
+            # DataParallel
             outputs, states = model.module.forward_sequence(images, poses, intrinsics)
         else:
+            # 无包装的模型
             outputs, states = model.forward_sequence(images, poses, intrinsics)
+
         # 计算损失（整个序列的损失）
         # batch['tsdf']: (batch, 1, D, H, W)
         # outputs: (batch, n_view, ...)
