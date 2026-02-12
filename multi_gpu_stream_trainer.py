@@ -114,14 +114,14 @@ class MultiGPUStreamTrainer:
                 reset_state=(i == 0 and reset_state)  # 只在第一个GPU上重置状态
             )
 
-            # 移到CPU以减少显存占用（处理字典和 tensor 两种情况）
+            # 将输出移到主GPU（cuda:0）以便合并
             if isinstance(output_gpu, dict):
-                # 字典类型，将每个张量移到CPU
-                output_cpu = {k: v.to('cpu') if isinstance(v, torch.Tensor) else v for k, v in output_gpu.items()}
+                # 字典类型，将每个张量移到主GPU
+                output_main = {k: v.to(f'cuda:{self.gpu_ids[0]}') if isinstance(v, torch.Tensor) else v for k, v in output_gpu.items()}
             else:
-                # 张量类型，直接移到CPU
-                output_cpu = output_gpu.to('cpu')
-            gpu_outputs.append(output_cpu)
+                # 张量类型，直接移到主GPU
+                output_main = output_gpu.to(f'cuda:{self.gpu_ids[0]}')
+            gpu_outputs.append(output_main)
             gpu_states.append(state_gpu)
 
         # 合并结果

@@ -3,22 +3,22 @@
     "step": -1,
     "frame": -1,
     "layer": "\u5f02\u5e38",
-    "label": "\u8bad\u7ec3\u5f02\u5e38: AttributeError",
-    "timestamp": 1770900499.7039664,
+    "label": "\u8bad\u7ec3\u5f02\u5e38: RuntimeError",
+    "timestamp": 1770904304.2647247,
     "gpu_info": {
       "0": {
-        "allocated_mb": 2779.13720703125,
-        "reserved_mb": 2916.0,
-        "max_allocated_mb": 2857.8759765625,
-        "max_reserved_mb": 2916.0
+        "allocated_mb": 2247.14111328125,
+        "reserved_mb": 2318.0,
+        "max_allocated_mb": 2303.8935546875,
+        "max_reserved_mb": 2318.0
       },
       "1": {
-        "allocated_mb": 85.54638671875,
-        "reserved_mb": 100.0,
-        "max_allocated_mb": 85.54638671875,
-        "max_reserved_mb": 100.0
+        "allocated_mb": 137.53271484375,
+        "reserved_mb": 144.0,
+        "max_allocated_mb": 137.7333984375,
+        "max_reserved_mb": 144.0
       }
     },
-    "error": "'dict' object has no attribute 'to'"
+    "error": "transform: failed to synchronize: cudaErrorIllegalAddress: an illegal memory access was encountered"
   }
 ]
