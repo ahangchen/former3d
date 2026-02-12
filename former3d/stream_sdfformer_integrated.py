@@ -369,9 +369,10 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.pose_aware_projector = PoseAwareFeatureProjector(voxel_size=self.voxel_size)
 
         # 3D卷积融合网络（用于融合历史和当前特征）
-        # 输入维度动态计算：历史特征维度(256) + 当前特征(128) + SDF(1) = 385
+        # 输入维度动态计算：历史特征对齐到128 + 当前特征128 + SDF(1) = 257
+        # 注意：历史特征可能是不同维度（fine=16, medium=48, coarse=96），会动态对齐到128
         self.fusion_3d = nn.Sequential(
-            nn.Conv3d(385, 128, kernel_size=3, padding=1),
+            nn.Conv3d(257, 128, kernel_size=3, padding=1),
             nn.BatchNorm3d(128),
             nn.ReLU(),
             nn.Conv3d(128, 128, kernel_size=1),
@@ -586,14 +587,14 @@ class StreamSDFFormerIntegrated(SDFFormer):
         
         batch_size = images.shape[0]
         device = images.device
-        
+
         # 重置历史状态
         if reset_state:
             self.historical_state = None
             self.historical_pose = None
             self.historical_intrinsics = None
-        print("重置历史状态")
-        
+            print("重置历史状态")
+
         # 1. 转换为原始SDFFormer输入格式
         batch = self.convert_to_sdfformer_batch(images, poses, intrinsics, origin)
         
@@ -784,24 +785,15 @@ class StreamSDFFormerIntegrated(SDFFormer):
         
         print(f"[StreamFusion] Concat特征: {concat_features.shape}")
         
-        # 添加batch和空间维度用于3D卷积
-        concat_features = concat_features.unsqueeze(1).unsqueeze(2)  # [N, C, 1, 1]
-        concat_features = concat_features.permute(1, 0, 2, 3)  # [C, N, 1, 1]
+        # 简单融合：使用线性层将concat特征压缩到128维
+        if not hasattr(self, '_fusion_compressor'):
+            import torch.nn as nn
+            self._fusion_compressor = nn.Linear(concat_features.shape[1], 128).to(concat_features.device)
         
-        # 使用3D卷积融合
-        try:
-            fused = self.fusion_3d(concat_features)  # [128, N, 1, 1]
-            fused = fused.permute(1, 0, 2, 3).squeeze(-1).squeeze(-1).squeeze(-1)  # [N, 128]
-            
-            print(f"[StreamFusion] 融合后特征: {fused.shape}")
-            return fused
-            
-        except Exception as e:
-            print(f"⚠️ 3D卷积融合失败: {e}")
-            # 回退到简单加权平均
-            fused = 0.5 * projected_aligned + 0.5 * current_feats
-            print(f"[StreamFusion] 回退到加权平均: {fused.shape}")
-            return fused
+        fused = self._fusion_compressor(concat_features)
+        
+        print(f"[StreamFusion] 融合后特征: {fused.shape}")
+        return fused
         """更新体素输出中的特征
         
         Args:
@@ -827,7 +819,34 @@ class StreamSDFFormerIntegrated(SDFFormer):
                 
                 # 更新特征 - 修复spconv错误
                 fine_output = fine_output.replace_feature(compressed_features)
-        
+
+        return voxel_outputs
+
+    def _update_voxel_outputs(self,
+                             voxel_outputs: Dict,
+                             fused_features: torch.Tensor) -> Dict:
+        """更新体素输出的特征
+
+        Args:
+            voxel_outputs: 原始体素输出
+            fused_features: 融合后的特征
+
+        Returns:
+            更新后的体素输出
+        """
+        # 将融合后的特征应用到fine分辨率
+        if 'fine' in voxel_outputs:
+            fine_output = voxel_outputs['fine']
+            # 替换特征
+            if hasattr(fine_output, 'replace_feature'):
+                fine_output = fine_output.replace_feature(fused_features)
+            else:
+                # 如果没有replace_feature方法，直接更新特征
+                if hasattr(fine_output, 'features'):
+                    fine_output.features = fused_features
+
+            voxel_outputs['fine'] = fine_output
+
         return voxel_outputs
     
     def _build_output_dict(self,

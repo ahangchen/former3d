@@ -1,0 +1,24 @@
+[
+  {
+    "step": -1,
+    "frame": -1,
+    "layer": "\u5f02\u5e38",
+    "label": "\u8bad\u7ec3\u5f02\u5e38: RuntimeError",
+    "timestamp": 1770870815.5177355,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 9023.70361328125,
+        "reserved_mb": 9062.0,
+        "max_allocated_mb": 9023.822265625,
+        "max_reserved_mb": 9062.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "error": "CUDA out of memory. Tried to allocate 20.00 MiB (GPU 0; 9.91 GiB total capacity; 8.81 GiB already allocated; 13.12 MiB free; 8.85 GiB reserved in total by PyTorch) If reserved memory is >> allocated memory try setting max_split_size_mb to avoid fragmentation.  See documentation for Memory Management and PYTORCH_CUDA_ALLOC_CONF"
+  }
+]
