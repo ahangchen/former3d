@@ -39,7 +39,13 @@ class Former3D(nn.Module):
             [[0, 8, 4, 0, 8, 4, 0, 8, 4], [8, 16, 4, 8, 16, 4, 8, 16, 4], [16, 32, 4, 16, 32, 4, 16, 32, 4], [32, 64, 4, 32, 64, 4, 32, 64, 4]],
             [[0, 16, 8, 0, 16, 8, 0, 16, 8], [16, 32, 8, 16, 32, 8, 16, 32, 8], [32, 64, 8, 32, 64, 8, 32, 64, 8]]
         ]
-        nums_blocks = [2, 2, 2, 2]
+        # nums_blocks控制每层的attention block数量
+        # 支持通过kwargs['attn_layers']动态设置
+        nums_blocks = kwargs.get('attn_layers', 2)  # 默认2层，设为0禁用
+        if isinstance(nums_blocks, int):
+            nums_blocks = [nums_blocks, nums_blocks, nums_blocks, nums_blocks]
+        else:
+            nums_blocks = [2, 2, 2, 2]  # 旧格式，保持默认2层
         
         if self.sync_bn == True:
             BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01, track_running_stats=False)(nn.BatchNorm1d))

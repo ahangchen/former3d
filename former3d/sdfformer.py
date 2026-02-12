@@ -60,10 +60,12 @@ class SDFFormer(torch.nn.Module):
                 input_depth += 1
             if resname == 'fine':
                 net = backbone3d(input_depth=input_depth, channels=net3d_channels[i], post_deform=True,
-                            hidden_depth=net3d_hidden_depths[i], output_depth=net3d_output_depths[i])
+                            hidden_depth=net3d_hidden_depths[i], output_depth=net3d_output_depths[i],
+                            attn_layers=attn_layers)
             else:
                 net = backbone3d(input_depth=input_depth, channels=net3d_channels[i], post_deform=False,
-                            hidden_depth=net3d_hidden_depths[i], output_depth=net3d_output_depths[i])
+                            hidden_depth=net3d_hidden_depths[i], output_depth=net3d_output_depths[i],
+                            attn_layers=attn_layers)
             output_depth = net.output_depth
             self.net3d[resname] = net
             self.output_layers[resname] = spconv.SubMConv3d(output_depth, 1, 1, 1, padding=1, bias=True)
