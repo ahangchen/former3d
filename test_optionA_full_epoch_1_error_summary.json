@@ -1,0 +1,79 @@
+{
+  "by_step": {
+    "-1": {
+      "record_count": 1,
+      "gpu_stats": {
+        "0": {
+          "min_allocated_mb": 621.04052734375,
+          "max_allocated_mb": 621.04052734375,
+          "avg_allocated_mb": 621.04052734375,
+          "min_reserved_mb": 676.0,
+          "max_reserved_mb": 676.0
+        },
+        "1": {
+          "min_allocated_mb": 0.0,
+          "max_allocated_mb": 0.0,
+          "avg_allocated_mb": 0.0,
+          "min_reserved_mb": 0.0,
+          "max_reserved_mb": 0.0
+        }
+      }
+    }
+  },
+  "by_frame": {
+    "-1": {
+      "record_count": 1,
+      "gpu_stats": {
+        "0": {
+          "min_allocated_mb": 621.04052734375,
+          "max_allocated_mb": 621.04052734375,
+          "avg_allocated_mb": 621.04052734375,
+          "min_reserved_mb": 676.0,
+          "max_reserved_mb": 676.0
+        },
+        "1": {
+          "min_allocated_mb": 0.0,
+          "max_allocated_mb": 0.0,
+          "avg_allocated_mb": 0.0,
+          "min_reserved_mb": 0.0,
+          "max_reserved_mb": 0.0
+        }
+      }
+    }
+  },
+  "by_layer": {
+    "\u5f02\u5e38": {
+      "record_count": 1,
+      "gpu_stats": {
+        "0": {
+          "min_allocated_mb": 621.04052734375,
+          "max_allocated_mb": 621.04052734375,
+          "avg_allocated_mb": 621.04052734375,
+          "min_reserved_mb": 676.0,
+          "max_reserved_mb": 676.0
+        },
+        "1": {
+          "min_allocated_mb": 0.0,
+          "max_allocated_mb": 0.0,
+          "avg_allocated_mb": 0.0,
+          "min_reserved_mb": 0.0,
+          "max_reserved_mb": 0.0
+        }
+      }
+    }
+  },
+  "current_memory": {
+    "0": {
+      "allocated_mb": 621.04052734375,
+      "reserved_mb": 676.0,
+      "max_allocated_mb": 650.748046875,
+      "max_reserved_mb": 676.0
+    },
+    "1": {
+      "allocated_mb": 0.0,
+      "reserved_mb": 0.0,
+      "max_allocated_mb": 0.0,
+      "max_reserved_mb": 0.0
+    }
+  }
+}

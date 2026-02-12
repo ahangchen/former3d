@@ -1,0 +1,49 @@
+[
+  {
+    "step": 0,
+    "frame": -1,
+    "layer": "\u8bad\u7ec3\u5f00\u59cb",
+    "label": "\u8bad\u7ec3\u5f00\u59cb",
+    "timestamp": 1770860655.7620928,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 118.38671875,
+        "reserved_mb": 128.0,
+        "max_allocated_mb": 118.38671875,
+        "max_reserved_mb": 128.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    }
+  },
+  {
+    "step": 0,
+    "frame": -1,
+    "layer": "\u6570\u636e\u52a0\u8f7d",
+    "label": "Batch 0 \u6570\u636e\u52a0\u8f7d\u540e",
+    "timestamp": 1770860656.147464,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 134.4345703125,
+        "reserved_mb": 144.0,
+        "max_allocated_mb": 134.4345703125,
+        "max_reserved_mb": 144.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "batch_size": 2,
+    "sequence_length": 10,
+    "images_size": 15728640,
+    "poses_size": 1280,
+    "intrinsics_size": 720
+  }
+]

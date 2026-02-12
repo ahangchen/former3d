@@ -1,0 +1,24 @@
+[
+  {
+    "step": -1,
+    "frame": -1,
+    "layer": "\u5f02\u5e38",
+    "label": "\u8bad\u7ec3\u5f02\u5e38: AttributeError",
+    "timestamp": 1770860875.480977,
+    "gpu_info": {
+      "0": {
+        "allocated_mb": 134.4345703125,
+        "reserved_mb": 144.0,
+        "max_allocated_mb": 134.4345703125,
+        "max_reserved_mb": 144.0
+      },
+      "1": {
+        "allocated_mb": 0.0,
+        "reserved_mb": 0.0,
+        "max_allocated_mb": 0.0,
+        "max_reserved_mb": 0.0
+      }
+    },
+    "error": "'StreamSDFFormerIntegrated' object has no attribute 'forward_sequence'"
+  }
+]

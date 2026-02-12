@@ -21,8 +21,6 @@ from former3d.net3d.sparse3d import combineSparseConvTensor, xyzb2bxyz, bxyz2xyz
 # 导入Phase 1的流式组件
 from former3d.pose_projection import PoseProjection
 from former3d.stream_fusion_concat import StreamConcatFusion
-from former3d.stream_projection import HistoricalFeatureProjector
-from former3d.pose_aware_projection import PoseAwareFeatureProjector
 
 
 class PoseBasedFeatureProjection:
@@ -333,9 +331,6 @@ class StreamSDFFormerIntegrated(SDFFormer):
         # 初始化原始SDFFormer
         super().__init__(attn_heads, attn_layers, use_proj_occ, voxel_size)
 
-        # 立即保存self.voxel_size，因为后续代码需要使用它
-        self.voxel_size = voxel_size
-
         # 保存额外参数
         self.fusion_local_radius = fusion_local_radius
         self.crop_size = crop_size
@@ -344,7 +339,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
         # 添加流式组件
         self.pose_projection = PoseProjection()
         # 新版本：PoseBasedFeatureProjection用于多尺度特征和SDF投影
-        self.pose_based_projection = PoseBasedFeatureProjection(voxel_size=self.voxel_size)
+        self.pose_based_projection = PoseBasedFeatureProjection(voxel_size=voxel_size)
 
         # 注意：原始SDFFormer输出特征维度为1，但流式融合需要更大维度
         # 这里我们使用线性层进行特征维度的扩展和压缩
@@ -364,17 +359,15 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.historical_state = None
         self.historical_pose = None
         self.historical_intrinsics = None
-
-        # Pose-Aware投影器（使用Pose投影历史特征和SDF）
-        self.pose_aware_projector = PoseAwareFeatureProjector(voxel_size=self.voxel_size)
+        # 流式投影器（预投影历史特征）
+        self.historical_projector = HistoricalFeatureProjector(voxel_size=voxel_size)
 
         # 3D卷积融合网络（用于融合历史和当前特征）
-        # 输入维度动态计算：历史特征维度(256) + 当前特征(128) + SDF(1) = 385
         self.fusion_3d = nn.Sequential(
-            nn.Conv3d(385, 128, kernel_size=3, padding=1),
+            nn.Conv3d(257, 128, kernel_size=3, padding=1),  # 输入：历史(16) + 当前(128) + SDF(1) = 145 (动态调整)
             nn.BatchNorm3d(128),
             nn.ReLU(),
-            nn.Conv3d(128, 128, kernel_size=1),
+            nn.Conv3d(128, 128, kernel_size=1),  # 1x1卷积
             nn.ReLU()
         )
         self.fusion_3d_enabled = True  # 启用3D卷积融合
@@ -592,7 +585,19 @@ class StreamSDFFormerIntegrated(SDFFormer):
             self.historical_state = None
             self.historical_pose = None
             self.historical_intrinsics = None
-        print("重置历史状态")
+        # 流式投影器（预投影历史特征）
+        self.historical_projector = HistoricalFeatureProjector(voxel_size=voxel_size)
+
+        # 3D卷积融合网络（用于融合历史和当前特征）
+        self.fusion_3d = nn.Sequential(
+            nn.Conv3d(257, 128, kernel_size=3, padding=1),  # 输入：历史(16) + 当前(128) + SDF(1) = 145 (动态调整)
+            nn.BatchNorm3d(128),
+            nn.ReLU(),
+            nn.Conv3d(128, 128, kernel_size=1),  # 1x1卷积
+            nn.ReLU()
+        )
+        self.fusion_3d_enabled = True  # 启用3D卷积融合
+            print("重置历史状态")
         
         # 1. 转换为原始SDFFormer输入格式
         batch = self.convert_to_sdfformer_batch(images, poses, intrinsics, origin)
@@ -641,17 +646,9 @@ class StreamSDFFormerIntegrated(SDFFormer):
             multiscale_features=output.get('multiscale_features', None)
         )
         output.update(base_output)
-
-        # 7. 更新历史状态（提取当前体素索引）
-        # 从voxel_outputs中提取当前体素索引（用于Pose-Aware投影）
-        current_voxel_indices = None
-        if 'voxel_outputs' in output and 'fine' in output['voxel_outputs']:
-            fine_output = output['voxel_outputs']['fine']
-            if hasattr(fine_output, 'indices'):
-                current_voxel_indices = fine_output.indices  # [N, 4]
-                print(f"[Forward] 提取当前体素索引: {current_voxel_indices.shape}")
-
-        new_state = self._create_new_state(output, poses, current_voxel_indices)
+        
+        # 7. 更新历史状态
+        new_state = self._create_new_state(output, poses)
         self.historical_state = new_state
         self.historical_pose = poses.detach().clone()
         if intrinsics is not None:
@@ -701,107 +698,267 @@ class StreamSDFFormerIntegrated(SDFFormer):
             'original_features': fine_output.features  # 保存原始特征
         }
     
-
     def _apply_stream_fusion(self, 
                            current_features: Dict,
                            historical_features: Dict,
                            current_pose: torch.Tensor) -> torch.Tensor:
         """
-        应用流式融合（选项A完整版：使用预投影特征 + concat + 3D卷积融合）
-        
+        应用流式融合（Phase 4：使用Pose-based投影）
+
         Args:
             current_features: 当前特征字典（从_extract_current_features提取）
             historical_features: 历史特征字典（从_extract_historical_features提取）
             current_pose: 当前帧位姿 [B, 4, 4]
-            
+
         Returns:
-            融合后的特征 [N, 128]
+            融合后的特征 [N, C]
         """
+        # 检查是否有历史特征
         if historical_features is None:
             print("⚠️ 没有历史特征，跳过流式融合")
             current_feats = current_features['features']
             return current_feats
 
-        # 检查是否有预投影的特征（选项A改进版）
-        if 'projected_features' not in historical_features:
-            print("⚠️ 历史状态中没有projected_features，跳过流式融合")
+        # 检查是否有历史状态数据
+        if 'dense_grids' not in historical_features:
+            print("⚠️ 历史状态中没有dense_grids，跳过流式融合")
             current_feats = current_features['features']
             return current_feats
 
-        current_feats = current_features['features']  # [N, 128]
-        projected = historical_features['projected_features']  # {resname: [N, C]}
-        
+        # 检查当前和历史特征是否存在
+        if current_features is None:
+            print("⚠️ 当前特征为None，跳过流式融合")
+            return None
+
+        current_feats = current_features['features']
+        current_coords = current_features['coords']
+        current_batch_inds = current_features['batch_inds']
         num_points = current_feats.shape[0]
-        device = current_feats.device
-        
-        print(f"[StreamFusion] 当前特征: {current_feats.shape}")
-        print(f"[StreamFusion] 预投影特征: {list(projected.keys())}")
-        
-        # 提取预投影的fine特征和SDF
-        if 'fine' not in projected:
-            print("⚠️ 没有预投影的fine特征，跳过流式融合")
-            return current_feats
-        
-        projected_fine = projected['fine']  # [N, C] - 动态维度
-        projected_sdf = projected.get('sdf', None)  # [N, 1]
-        
-        print(f"[StreamFusion] 预投影fine特征: {projected_fine.shape}")
+
+        # 提取当前和历史pose
+        historical_pose = self.historical_pose  # [B, 4, 4]
+        T_ch = self.pose_based_projection.compute_transform(historical_pose, current_pose)  # [B, 4, 4]
+
+        print(f"[StreamFusion] pose变换T_ch: {T_ch.shape}")
+
+        # 对每个分辨率级别投影历史特征
+        projected_features = {}
+
+        for resname in ['coarse', 'medium', 'fine']:
+            if resname not in historical_features['dense_grids']:
+                continue
+
+            # 获取历史特征数据
+            dense_grid = historical_features['dense_grids'][resname]  # [B, C, D, H, W]
+            sparse_indices = historical_features['sparse_indices'][resname]  # [N_historical, 4]
+            spatial_shape = historical_features['spatial_shapes'][resname]  # [D, H, W]
+            resolution = historical_features['resolutions'][resname]  # float
+
+            print(f"[StreamFusion] {resname}分辨率:")
+            print(f"  密集网格: {dense_grid.shape}")
+            print(f"  稀疏索引: {sparse_indices.shape}")
+            print(f"  空间形状: {spatial_shape}")
+            print(f"  分辨率: {resolution}")
+
+            # 提取当前体素信息
+            current_coords = current_coords  # [N, 3] (需要是物理坐标）
+            current_batch_inds = current_batch_inds  # [N]
+            num_points = current_coords.shape[0]
+
+            # 将历史稀疏索引转换为物理坐标（米）
+            historical_indices_voxel = sparse_indices[:, 1:4].float()  # [N_historical, 3]
+            historical_coords_world = historical_indices_voxel * resolution  # 世界坐标
+
+            # 提取历史batch索引
+            historical_batch_inds = sparse_indices[:, 0].long()  # [N_historical]
+
+            # 创建历史坐标字典（用于project_features）
+            # 需要匹配current_indices的格式
+            # 简化：使用current_batch_inds和current_coords的长度
+            # 但需要确保历史索引和当前索引的数量匹配
+
+            # 检查索引数量是否匹配
+            if sparse_indices.shape[0] != num_points:
+                # 如果不匹配，截断或填充
+                if sparse_indices.shape[0] < num_points:
+                    # 历史点较少，填充零
+                    historical_indices_world = torch.cat([
+                        historical_indices_world,
+                        torch.zeros(num_points - sparse_indices.shape[0], 3, device=dense_grid.device)
+                    ], dim=0)
+                    historical_batch_inds = torch.cat([
+                        historical_batch_inds,
+                        torch.zeros(num_points - sparse_indices.shape[0], dtype=torch.long, device=dense_grid.device)
+                    ], dim=0)
+                else:
+                    # 历史点较多，截断
+                    historical_indices_world = historical_indices_world[:num_points]
+                    historical_batch_inds = historical_batch_inds[:num_points]
+
+            # 转换为齐次坐标
+            ones = torch.ones(num_points, 1, device=dense_grid.device, dtype=historical_indices_world.dtype)
+            historical_coords_homo = torch.cat([historical_indices_world, ones], dim=1)  # [N, 4]
+
+            # 根据batch索引选择变换矩阵
+            batch_indices_for_transform = current_batch_inds  # [N]
+            T_ch_batch = T_ch[batch_indices_for_transform]  # [N, 4, 4]
+
+            # 变换历史坐标到当前坐标系
+            transformed_coords_homo = torch.bmm(T_ch_batch, historical_coords_homo.unsqueeze(-1))
+            transformed_coords = transformed_coords_homo.squeeze(-1)[:, :3]  # [N, 3]
+
+            # 转换回体素坐标
+            transformed_voxel_coords = transformed_coords / resolution
+
+            # 归一化坐标到[-1, 1]
+            normalized_coords = self.pose_based_projection.normalize_coords(
+                transformed_voxel_coords, spatial_shape
+            )  # [N, 3]
+
+            # 裁剪到有效范围
+            normalized_coords = torch.clamp(normalized_coords, -1.0, 1.0)
+
+            # 使用grid_sample从历史特征网格采样
+            # grid: [1, 1, 1, N, 3]
+            grid = normalized_coords.view(1, 1, 1, num_points, 3)
+            grid = grid.expand(batch_size, -1, -1, -1, -1)  # [B, 1, 1, N, 3]
+
+            print(f"[StreamFusion] {resname} grid: {grid.shape}, range: [{grid.min():.3f}, {grid.max():.3f}]")
+
+            # 采样历史特征
+            try:
+                sampled = F.grid_sample(
+                    dense_grid,  # [B, C, D, H, W]
+                    grid,      # [B, 1, 1, N, 3]
+                    mode='bilinear',
+                    padding_mode='zeros',
+                    align_corners=False
+                )  # [B, C, 1, 1, N]
+
+                # 提取采样的特征
+                # 根据batch索引提取对应特征
+                projected_res = []
+                for b in range(batch_size):
+                    mask = batch_indices_for_transform == b
+                    if mask.any():
+                        projected_b = sampled[b, :, 0, 0, mask].permute(2, 1, 0)  # [N_b, C]
+                        projected_res.append(projected_b)
+                    else:
+                        projected_res.append(torch.zeros(
+                            (0, dense_grid.shape[1]),
+                            device=dense_grid.device,
+                            dtype=dense_grid.dtype
+                        ))
+
+                projected_features[resname] = torch.cat(projected_res, dim=0)  # [total, C]
+
+                print(f"[StreamFusion] {resname} 投影结果: {projected_features[resname].shape}")
+
+            except Exception as e:
+                print(f"[StreamFusion] {resname} 投影失败: {e}")
+                projected_features[resname] = torch.zeros(num_points, dense_grid.shape[1],
+                                                       device=current_feats.device)
+
+        # 融合多尺度特征
+        # 当前fine特征
+        if 'fine' in projected_features:
+            projected_fine = projected_features['fine']
+
+            # 如果coarse和medium投影成功
+            if 'coarse' in projected_features and 'medium' in projected_features:
+                projected_coarse = projected_features['coarse']
+                projected_medium = projected_features['medium']
+
+                # 使用加权融合：fine + 0.5*medium + 0.25*coarse
+                # 需要匹配空间维度
+                # 简化：如果形状不匹配，使用简单的插值
+
+                # 扩展coarse到fine的大小
+                if projected_coarse.shape[0] != projected_fine.shape[0]:
+                    projected_coarse = projected_coarse[:projected_fine.shape[0]]
+
+                if projected_coarse.shape[1] != projected_fine.shape[1]:
+                    # 使用平均池化或repeat
+                    # 简化：repeat
+                    repeat_factor = projected_fine.shape[1] // projected_coarse.shape[1]
+                    projected_coarse = projected_coarse.repeat(1, repeat_factor)
+
+                if projected_medium.shape[0] != projected_fine.shape[0]:
+                    projected_medium = projected_medium[:projected_fine.shape[0]]
+
+                if projected_medium.shape[1] != projected_fine.shape[1]:
+                    repeat_factor = projected_fine.shape[1] // projected_medium.shape[1]
+                    projected_medium = projected_medium.repeat(1, repeat_factor)
+
+                fused = projected_fine + 0.5 * projected_medium + 0.25 * projected_coarse
+            elif 'fine' in projected_features:
+                fused = projected_fine
+            else:
+                fused = current_feats
+
+        # Phase 3: 投影和融合历史SDF
+        projected_sdf = None
+
+        if 'sdf_grid' in historical_features:
+            sdf_grid = historical_features['sdf_grid']  # [B, 1, D, H, W]
+            sdf_indices = historical_features['sdf_indices']  # [N_sdf, 4]
+            sdf_spatial_shape = historical_features['sdf_spatial_shape']  # [D, H, W]
+            sdf_resolution = historical_features['sdf_resolution']  # float
+
+            print(f"[StreamFusion] Phase 3: 开始SDF投影")
+            print(f"  SDF网格: {sdf_grid.shape}")
+            print(f"  SDF索引: {sdf_indices.shape}")
+            print(f"  SDF分辨率: {sdf_resolution}")
+
+            try:
+                # 投影SDF
+                projected_sdf = self.pose_based_projection.project_sdf(
+                    sdf_grid,
+                    sdf_indices,
+                    current_coords,  # 使用当前特征的坐标
+                    T_ch,
+                    sdf_spatial_shape,
+                    sdf_resolution
+                )  # [N, 1]
+
+                print(f"[StreamFusion] SDF投影成功: {projected_sdf.shape}")
+
+            except Exception as e:
+                print(f"[StreamFusion] SDF投影失败: {e}")
+                projected_sdf = None
+
+        # Phase 3: 融合历史SDF到当前预测
         if projected_sdf is not None:
-            print(f"[StreamFusion] 预投影SDF: {projected_sdf.shape}")
-        
-        # 检查形状是否匹配
-        if projected_fine.shape[0] != current_feats.shape[0]:
-            print(f"⚠️ 预投影特征数量不匹配: {projected_fine.shape[0]} vs {current_feats.shape[0]}")
-            # 截断
-            min_size = min(projected_fine.shape[0], current_feats.shape[0])
-            projected_fine = projected_fine[:min_size]
-            current_feats = current_feats[:min_size]
-            if projected_sdf is not None:
-                projected_sdf = projected_sdf[:min_size]
-            num_points = min_size
+            # 检查形状是否匹配
+            if projected_sdf.shape[0] == fused.shape[0]:
+                sdf_weight = 0.3  # 历史SDF权重，可根据需要调整
+
+                # 假设融合特征的第一维是SDF（或与SDF相关）
+                # 简化：将历史SDF融合到特征的第一维
+                if fused.shape[1] > 0:
+                    current_sdf = fused[:, :1]  # 提取第一维作为当前SDF
+
+                    # 加权融合
+                    fused_sdf = sdf_weight * projected_sdf + (1 - sdf_weight) * current_sdf
+
+                    # 替换融合后的SDF
+                    fused[:, :1] = fused_sdf
+
+                    print(f"[StreamFusion] Phase 3: SDF融合完成")
+                    print(f"  SDF权重: {sdf_weight}")
+                    print(f"  当前SDF统计: mean={current_sdf.mean().item():.4f}, std={current_sdf.std().item():.4f}")
+                    print(f"  投影SDF统计: mean={projected_sdf.mean().item():.4f}, std={projected_sdf.std().item():.4f}")
+                    print(f"  融合SDF统计: mean={fused_sdf.mean().item():.4f}, std={fused_sdf.std().item():.4f}")
+                else:
+                    print(f"[StreamFusion] Phase 3: 跳过SDF融合（特征维度不足）")
+            else:
+                print(f"[StreamFusion] Phase 3: 跳过SDF融合（形状不匹配: {projected_sdf.shape[0]} vs {fused.shape[0]})")
         else:
-            num_points = current_feats.shape[0]
-        
-        # 统一特征维度：将预投影的fine特征维度与当前特征维度对齐
-        if projected_fine.shape[1] != current_feats.shape[1]:
-            # 创建特征维度对齐层
-            if not hasattr(self, '_feat_aligner'):
-                import torch.nn as nn
-                feat_in = projected_fine.shape[1]
-                feat_out = current_feats.shape[1]
-                self._feat_aligner = nn.Linear(feat_in, feat_out).to(projected_fine.device)
-            
-            # 对齐预投影特征维度
-            projected_aligned = self._feat_aligner(projected_fine)
-        else:
-            projected_aligned = projected_fine
-        
-        # Concat: 对齐后的预投影fine + 当前 + 历史SDF
-        if projected_sdf is not None:
-            concat_features = torch.cat([projected_aligned, current_feats, projected_sdf], dim=1)
-        else:
-            concat_features = torch.cat([projected_aligned, current_feats], dim=1)
-        
-        print(f"[StreamFusion] Concat特征: {concat_features.shape}")
-        
-        # 添加batch和空间维度用于3D卷积
-        concat_features = concat_features.unsqueeze(1).unsqueeze(2)  # [N, C, 1, 1]
-        concat_features = concat_features.permute(1, 0, 2, 3)  # [C, N, 1, 1]
-        
-        # 使用3D卷积融合
-        try:
-            fused = self.fusion_3d(concat_features)  # [128, N, 1, 1]
-            fused = fused.permute(1, 0, 2, 3).squeeze(-1).squeeze(-1).squeeze(-1)  # [N, 128]
-            
-            print(f"[StreamFusion] 融合后特征: {fused.shape}")
-            return fused
-            
-        except Exception as e:
-            print(f"⚠️ 3D卷积融合失败: {e}")
-            # 回退到简单加权平均
-            fused = 0.5 * projected_aligned + 0.5 * current_feats
-            print(f"[StreamFusion] 回退到加权平均: {fused.shape}")
-            return fused
+            print(f"[StreamFusion] Phase 3: 跳过SDF融合（投影失败或不可用）")
+
+        return fused
+    
+    def _update_voxel_outputs(self, voxel_outputs: Dict, fused_features: torch.Tensor) -> Dict:
         """更新体素输出中的特征
         
         Args:
@@ -888,15 +1045,14 @@ class StreamSDFFormerIntegrated(SDFFormer):
         
         return output
     
-    def _create_new_state(self, output: Dict, current_pose: torch.Tensor, current_voxel_indices: Optional[torch.Tensor] = None) -> Dict:
-        """从当前输出创建新的历史状态（Phase 3改进版 + Pose-Aware投影）
+    def _create_new_state(self, output: Dict, current_pose: torch.Tensor) -> Dict:
+        """从当前输出创建新的历史状态（Phase 3改进版）
 
-        保存多尺度特征和SDF，并使用Pose投影到当前坐标系
+        保存多尺度特征而不是最终输出
 
         Args:
             output: 当前帧输出
             current_pose: 当前帧相机位姿
-            current_voxel_indices: 当前帧体素索引 [N, 4] (可选，用于确定投影目标点)
 
         Returns:
             新的历史状态字典
@@ -1001,52 +1157,15 @@ class StreamSDFFormerIntegrated(SDFFormer):
         for resname in dense_grids:
             print(f"  {resname}: 密集网格{dense_grids[resname].shape}")
 
-        # Pose-Aware投影：使用Pose将历史特征和SDF投影到当前坐标系
-        projected_features = None
-
-        if self.historical_pose is not None and dense_grids:
-            print("[Pose-Aware Projection] 开始投影历史特征到当前坐标系")
-
-            historical_features_dict = {
-                'dense_grids': dense_grids,
-                'sparse_indices': sparse_indices,
-                'spatial_shapes': spatial_shapes,
-                'resolutions': resolutions,
-            }
-
-            # 如果有SDF，也添加到历史特征中
-            if sdf_grid is not None:
-                historical_features_dict['sdf_grid'] = sdf_grid
-                historical_features_dict['sdf_indices'] = sdf_indices
-                historical_features_dict['sdf_spatial_shape'] = sdf_spatial_shape
-                historical_features_dict['sdf_resolution'] = sdf_resolution
-
-            try:
-                projected_features = self.pose_aware_projector.project(
-                    historical_features_dict,
-                    self.historical_pose,
-                    current_pose,
-                    current_voxel_indices
-                )
-                print("[Pose-Aware Projection] 投影成功")
-            except Exception as e:
-                print(f"[Pose-Aware Projection] 投影失败: {e}")
-                projected_features = None
-
-        # 添加投影特征到状态
-        if projected_features is not None:
-            new_state['projected_features'] = projected_features
-
         return new_state
 
-    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor, current_voxel_indices: Optional[torch.Tensor] = None) -> Dict:
+    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor) -> Dict:
         """
         创建legacy状态（用于向后兼容）
 
         Args:
             output: 当前帧输出
             current_pose: 当前帧相机位姿
-            current_voxel_indices: 当前帧体素索引（保持接口一致性）
 
         Returns:
             新的历史状态字典
@@ -1129,14 +1248,13 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
         return dense_grid
 
-    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor, current_voxel_indices: Optional[torch.Tensor] = None) -> Dict:
+    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor) -> Dict:
         """
         创建legacy状态（用于向后兼容）
 
         Args:
             output: 当前帧输出
             current_pose: 当前帧相机位姿
-            current_voxel_indices: 当前帧体素索引（保持接口一致性）
 
         Returns:
             新的历史状态字典
@@ -1251,6 +1369,18 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.historical_state = None
         self.historical_pose = None
         self.historical_intrinsics = None
+        # 流式投影器（预投影历史特征）
+        self.historical_projector = HistoricalFeatureProjector(voxel_size=voxel_size)
+
+        # 3D卷积融合网络（用于融合历史和当前特征）
+        self.fusion_3d = nn.Sequential(
+            nn.Conv3d(257, 128, kernel_size=3, padding=1),  # 输入：历史(16) + 当前(128) + SDF(1) = 145 (动态调整)
+            nn.BatchNorm3d(128),
+            nn.ReLU(),
+            nn.Conv3d(128, 128, kernel_size=1),  # 1x1卷积
+            nn.ReLU()
+        )
+        self.fusion_3d_enabled = True  # 启用3D卷积融合
         print("历史状态已清除")
 
     def enable_lightweight_state(self, enabled: bool = True):
@@ -1303,6 +1433,18 @@ class StreamSDFFormerIntegrated(SDFFormer):
             self.historical_state = None
             self.historical_pose = None
             self.historical_intrinsics = None
+        # 流式投影器（预投影历史特征）
+        self.historical_projector = HistoricalFeatureProjector(voxel_size=voxel_size)
+
+        # 3D卷积融合网络（用于融合历史和当前特征）
+        self.fusion_3d = nn.Sequential(
+            nn.Conv3d(257, 128, kernel_size=3, padding=1),  # 输入：历史(16) + 当前(128) + SDF(1) = 145 (动态调整)
+            nn.BatchNorm3d(128),
+            nn.ReLU(),
+            nn.Conv3d(128, 128, kernel_size=1),  # 1x1卷积
+            nn.ReLU()
+        )
+        self.fusion_3d_enabled = True  # 启用3D卷积融合
 
         # 遍历序列中的每一帧（frame_idx循环在模型内部）
         for t in range(n_view):
