@@ -547,6 +547,19 @@ class StreamSDFFormerIntegrated(SDFFormer):
             # 新格式：直接返回，包含dense_grids和SDF
             # _apply_stream_fusion会直接使用这些字段
             return historical_state
+        elif self.lightweight_state_mode and 'sparse_indices' in historical_state:
+            # Lightweight模式第一帧：没有dense_grids，但需要兼容旧格式
+            # 创建临时coords字段用于向后兼容
+            if 'coords' not in historical_state and 'sparse_indices' in historical_state:
+                # 使用第一个分辨率的sparse_indices创建临时coords
+                sparse_inds = historical_state['sparse_indices']
+                first_res = list(sparse_inds.keys())[0]
+                indices = sparse_inds[first_res]
+                # 从indices创建coords（米为单位）
+                coords = indices[:, :3].float() * self.resolutions[first_res]
+                historical_state['coords'] = coords
+                historical_state['features'] = torch.randn(indices.shape[0], 128, device=coords.device)
+            return historical_state
         else:
             # 旧格式：使用PoseProjection处理
             # 向后兼容，但不会包含dense_grids
