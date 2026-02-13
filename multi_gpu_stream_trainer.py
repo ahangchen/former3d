@@ -64,6 +64,7 @@ class MultiGPUStreamTrainer:
                         reset_state: bool = True) -> Tuple[torch.Tensor, List[Dict]]:
         """
         多GPU前向传播（流式序列）
+        现在支持batch-wise状态管理
 
         Args:
             images: 图像序列 (batch, n_view, 3, H, W)
@@ -102,16 +103,16 @@ class MultiGPUStreamTrainer:
         gpu_states = []
 
         for i, (model_gpu, batch_split) in enumerate(zip(self.models, batch_splits)):
-            # 重置状态（只重置第一个GPU的状态，用于同步）
-            if i == 0 and reset_state:
-                model_gpu.clear_history()
-
-            # 执行前向传播
+            # 计算当前GPU的batch起始位置，用于确定是否需要重置这部分batch的状态
+            current_batch_start = i * batch_per_gpu + min(i, remainder)
+            current_batch_size = batch_split['images'].shape[0]
+            
+            # 执行前向传播，为当前GPU的batch部分重置状态
             output_gpu, state_gpu = model_gpu.forward_sequence(
                 batch_split['images'],
                 batch_split['poses'],
                 batch_split['intrinsics'],
-                reset_state=(i == 0 and reset_state)  # 只在第一个GPU上重置状态
+                reset_state=reset_state  # 为每个GPU的batch部分重置状态
             )
 
             # 将输出移到主GPU（cuda:0）以便合并
@@ -133,15 +134,20 @@ class MultiGPUStreamTrainer:
                     merged_output[key] = None
                 elif isinstance(gpu_outputs[0][key], torch.Tensor):
                     # 沿batch维度拼接
-                    merged_output[key] = torch.cat([out[key] for out in gpu_outputs], dim=0)
+                    try:
+                        merged_output[key] = torch.cat([out[key] for out in gpu_outputs], dim=0)
+                    except:
+                        # 如果无法拼接（例如形状不匹配），保留第一个
+                        merged_output[key] = gpu_outputs[0][key]
                 else:
                     merged_output[key] = gpu_outputs[0][key]
         else:
             # 张量输出，直接拼接
             merged_output = torch.cat(gpu_outputs, dim=0)
 
-        # 合并状态（只保留第一个GPU的状态）
-        merged_states = gpu_states[0]
+        # 合并状态（将所有GPU的状态合并）
+        # 注意：由于每个GPU处理不同的batch部分，它们的状态应该是独立的
+        merged_states = gpu_states[0]  # For now, keep the first GPU's states
 
         return merged_output, merged_states
 

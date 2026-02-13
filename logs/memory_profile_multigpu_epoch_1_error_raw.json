@@ -3,22 +3,22 @@
     "step": -1,
     "frame": -1,
     "layer": "\u5f02\u5e38",
-    "label": "\u8bad\u7ec3\u5f02\u5e38: RuntimeError",
-    "timestamp": 1770904304.2647247,
+    "label": "\u8bad\u7ec3\u5f02\u5e38: ValueError",
+    "timestamp": 1770904353.6839848,
     "gpu_info": {
       "0": {
-        "allocated_mb": 2247.14111328125,
-        "reserved_mb": 2318.0,
-        "max_allocated_mb": 2303.8935546875,
-        "max_reserved_mb": 2318.0
+        "allocated_mb": 1292.25341796875,
+        "reserved_mb": 1332.0,
+        "max_allocated_mb": 1302.64208984375,
+        "max_reserved_mb": 1332.0
       },
       "1": {
-        "allocated_mb": 137.53271484375,
-        "reserved_mb": 144.0,
-        "max_allocated_mb": 137.7333984375,
-        "max_reserved_mb": 144.0
+        "allocated_mb": 85.54638671875,
+        "reserved_mb": 100.0,
+        "max_allocated_mb": 85.54638671875,
+        "max_reserved_mb": 100.0
       }
     },
-    "error": "transform: failed to synchronize: cudaErrorIllegalAddress: an illegal memory access was encountered"
+    "error": "Expected more than 1 spatial element when training, got input size torch.Size([1, 1536, 1, 1, 1])"
   }
 ]

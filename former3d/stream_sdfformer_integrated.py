@@ -360,10 +360,11 @@ class StreamSDFFormerIntegrated(SDFFormer):
         )
         self.stream_fusion_enabled = True  # 启用流式融合
 
-        # 历史状态管理
-        self.historical_state = None
-        self.historical_pose = None
-        self.historical_intrinsics = None
+        # 历史状态管理（batch-wise）
+        self.historical_state = None  # List[Dict], 每个batch sample一个状态
+        self.historical_pose = None    # [B, 4, 4] tensor
+        self.historical_intrinsics = None  # [B, 3, 3] tensor
+        self._batch_size = 0  # 记录当前batch大小
 
         # Pose-Aware投影器（使用Pose投影历史特征和SDF）
         self.pose_aware_projector = PoseAwareFeatureProjector(voxel_size=self.voxel_size)
@@ -413,6 +414,51 @@ class StreamSDFFormerIntegrated(SDFFormer):
         print(f"  - 裁剪空间: {crop_size}")
         print(f"  - 融合半径: {fusion_local_radius}")
         print(f"  - 使用投影占用: {use_proj_occ}")
+
+    def _init_batch_states(self, batch_size: int, device: torch.device = None):
+        """
+        初始化batch-wise状态
+
+        Args:
+            batch_size: batch大小
+            device: 设备，如果为None则使用当前设备
+        """
+        if device is None:
+            device = next(self.parameters()).device
+
+        self._batch_size = batch_size
+
+        # 初始化历史状态列表（每个batch sample一个状态）
+        self.historical_state = [None] * batch_size
+
+        # 初始化历史位姿和内参
+        self.historical_pose = torch.zeros(batch_size, 4, 4, device=device)
+        self.historical_intrinsics = torch.zeros(batch_size, 3, 3, device=device)
+
+    def _reset_batch_state(self, batch_idx: int):
+        """
+        重置指定batch sample的状态
+
+        Args:
+            batch_idx: batch索引
+        """
+        if 0 <= batch_idx < self._batch_size:
+            self.historical_state[batch_idx] = None
+
+    def _clear_all_states(self):
+        """
+        清空所有历史状态
+        """
+        self.historical_state = None
+        self.historical_pose = None
+        self.historical_intrinsics = None
+        self._batch_size = 0
+
+    def clear_history(self):
+        """
+        清空历史状态（兼容旧API）
+        """
+        self._clear_all_states()
     
     def convert_to_sdfformer_batch(self, 
                                   images: torch.Tensor,
@@ -432,26 +478,42 @@ class StreamSDFFormerIntegrated(SDFFormer):
         """
         batch_size = images.shape[0]
         device = images.device
-        
+
         # 确保所有张量都在正确的设备上
         images = images.to(device)
         poses = poses.to(device)
         intrinsics = intrinsics.to(device)
-        
+
         # 原始SDFFormer期望多视图输入，这里将单视图扩展为多视图
         n_views = 1  # 流式推理使用单视图
-        
+
         # 扩展图像维度 [batch, n_views, 3, H, W]
         rgb_imgs = images.unsqueeze(1)
-        
+
         # 计算投影矩阵（批量处理，避免条件判断）
         proj_mats = {}
         cam_positions = torch.zeros(batch_size, n_views, 3, device=device)
 
         for resname in self.resolutions:
             # 构建投影矩阵 [batch, n_views, 4, 4]
-            # 原始poses是(batch, 4, 4)，需要扩展为(batch, 1, 4, 4)以匹配n_views维度
-            proj_mat = poses.unsqueeze(1).expand(batch_size, n_views, 4, 4)
+            # 处理不同维度的poses输入
+            if len(poses.shape) == 3:  # (batch, 4, 4)
+                proj_mat = poses.unsqueeze(1).expand(batch_size, n_views, 4, 4)
+            elif len(poses.shape) == 4:  # (batch, 1, 4, 4) or (batch, n_views, 4, 4)
+                # 如果已经有视图维度，检查是否需要调整
+                if poses.shape[1] == 1:
+                    proj_mat = poses.expand(batch_size, n_views, 4, 4)
+                else:
+                    # 已经是正确的维度，直接使用
+                    proj_mat = poses[:, :n_views, :, :]
+            elif len(poses.shape) == 5:  # (batch, 1, n_views, 4, 4) or similar
+                # 处理DataParallel可能的维度变化
+                if poses.shape[1] == 1:
+                    proj_mat = poses[:, 0, :n_views, :, :]
+                else:
+                    proj_mat = poses[:, :n_views, :, :, :]
+            else:
+                raise ValueError(f"Unsupported poses shape: {poses.shape}")
 
             # 确保投影矩阵在正确的设备上
             proj_mat = proj_mat.to(device)
@@ -1355,14 +1417,14 @@ class StreamSDFFormerIntegrated(SDFFormer):
                         poses: torch.Tensor,
                         intrinsics: torch.Tensor,
                         reset_state: bool = True) -> Tuple[torch.Tensor, List[Dict]]:
-        """序列流式推理（支持批量处理）
-        
+        """序列流式推理（支持批量处理，batch-wise状态管理）
+
         Args:
             images: 图像序列 (batch, n_view, 3, H, W)
             poses: 位姿序列 (batch, n_view, 4, 4)
             intrinsics: 内参序列 (batch, n_view, 3, 3)
             reset_state: 是否在序列开始时重置状态
-            
+
         Returns:
             Tuple[torch.Tensor, List[Dict]]: (输出序列 (batch, n_view, ...), 状态列表)
         """
@@ -1371,11 +1433,9 @@ class StreamSDFFormerIntegrated(SDFFormer):
         outputs = []
         states = []
 
-        # 重置状态
-        if reset_state:
-            self.historical_state = None
-            self.historical_pose = None
-            self.historical_intrinsics = None
+        # 初始化batch-wise状态
+        if reset_state or self.historical_state is None or len(self.historical_state) != batch_size:
+            self._init_batch_states(batch_size, images.device)
 
         # 遍历序列中的每一帧（frame_idx循环在模型内部）
         for t in range(n_view):
@@ -1388,7 +1448,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
             # 注意：forward_single_frame需要能处理(batch, 1, 3, H, W)的输入
             output_t, state_t = self.forward_single_frame(
                 images_t, poses_t, intrinsics_t,
-                reset_state=(t == 0)  # 第一帧重置状态
+                reset_state=(t == 0)  # 第一帧重置状态（虽然状态现在是batch-wise的）
             )  # output_t的shape是 (batch, 1, ...)
 
             outputs.append(output_t)
