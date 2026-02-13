@@ -1349,28 +1349,42 @@ class StreamSDFFormerIntegrated(SDFFormer):
         
         return new_state
     
-    def forward(self, 
+    def forward(self,
                images: torch.Tensor,
                poses: torch.Tensor,
                intrinsics: torch.Tensor,
                reset_state: bool = False,
                origin: Optional[torch.Tensor] = None) -> Dict:
-        """流式推理接口（兼容原始调用方式）
-        
+        """流式推理接口（自动检测输入模式）
+
         Args:
-            images: 当前帧图像 [batch, 3, height, width]
-            poses: 当前帧相机位姿 [batch, 4, 4]
-            intrinsics: 当前帧相机内参 [batch, 3, 3]
-            reset_state: 是否重置历史状态
+            images: 图像
+                - 单帧模式: [batch, 3, height, width]
+                - 序列模式: [batch, n_view, 3, height, width]
+            poses: 位姿
+                - 单帧模式: [batch, 4, 4]
+                - 序列模式: [batch, n_view, 4, 4]
+            intrinsics: 内参
+                - 单帧模式: [batch, 3, 3]
+                - 序列模式: [batch, n_view, 3, 3]
+            reset_state: 是否重置历史状态（仅单帧模式）
             origin: 原点坐标 [batch, 3]
-            
+
         Returns:
-            当前帧输出字典
+            单帧模式: 当前帧输出字典
+            序列模式: 输出序列字典
         """
-        output, _ = self.forward_single_frame(
-            images, poses, intrinsics, reset_state, origin
-        )
-        return output
+        # 自动检测输入模式：检查images的维度
+        if len(images.shape) == 5:  # 序列模式: [batch, n_view, 3, H, W]
+            # 序列模式：调用forward_sequence
+            output, _ = self.forward_sequence(images, poses, intrinsics, reset_state=reset_state)
+            return output
+        elif len(images.shape) == 4:  # 单帧模式: [batch, 3, H, W]
+            # 单帧模式：调用forward_single_frame
+            output, _ = self.forward_single_frame(images, poses, intrinsics, reset_state, origin)
+            return output
+        else:
+            raise ValueError(f"Unsupported images shape: {images.shape}. Expected [B, 3, H, W] or [B, N, 3, H, W]")
     
     def enable_stream_fusion(self, enabled: bool = True):
         """启用或禁用流式融合
