@@ -75,7 +75,8 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
                      output: Dict,
                      current_pose: torch.Tensor,
                      current_intrinsics: torch.Tensor,
-                     current_3d_points: torch.Tensor):
+                     current_3d_points: torch.Tensor,
+                     multiscale_features: Optional[Dict] = None):
         """
         记录当前帧的状态到历史信息
 
@@ -84,24 +85,56 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             current_pose: [B, 4, 4] 当前Pose
             current_intrinsics: [B, 3, 3] 当前内参
             current_3d_points: [N, 3] 当前3D点坐标
+            multiscale_features: 多尺度特征字典（coarse, medium, fine）
         """
         batch_size = current_pose.shape[0]
 
-        # 提取fine级别的sparse feature和SDF
-        if 'voxel_outputs' not in output or 'fine' not in output['voxel_outputs']:
-            print("[_record_state] 警告：输出中没有fine级别的voxel_outputs")
-            return
+        # 优先使用multiscale_features
+        if multiscale_features is not None:
+            # 保存所有尺度的特征
+            historical_state = {
+                'multiscale': {},
+                'batch_size': batch_size
+            }
 
-        fine_output = output['voxel_outputs']['fine']  # SparseConvTensor
+            for resname in ['coarse', 'medium', 'fine']:
+                if resname in multiscale_features:
+                    res_data = multiscale_features[resname]
+                    # res_data['features'] 是 SparseConvTensor，需要提取其内部的特征
+                    sparse_tensor = res_data['features']
+                    historical_state['multiscale'][resname] = {
+                        'features': sparse_tensor.features.detach().clone(),  # [N, C]
+                        'indices': sparse_tensor.indices.detach().clone(),  # [N, 4]
+                        'spatial_shape': sparse_tensor.spatial_shape,
+                        'batch_size': sparse_tensor.batch_size,
+                        'resolution': res_data['resolution'],
+                        'logits': res_data['logits'].features.detach().clone()  # [N, 1]
+                    }
 
-        # 保存sparse特征和SDF（使用detach和clone避免显存泄露）
-        historical_state = {
-            'features': fine_output.features.detach().clone(),
-            'indices': fine_output.indices.detach().clone(),
-            'spatial_shape': fine_output.spatial_shape,
-            'batch_size': batch_size,
-            'resolution': self.resolutions['fine']
-        }
+            print(f"[_record_state] 已保存多尺度历史状态:")
+            for resname in historical_state['multiscale']:
+                print(f"  - {resname}: features={historical_state['multiscale'][resname]['features'].shape}")
+
+        else:
+            # 兼容旧代码：从voxel_outputs提取fine级别
+            if 'voxel_outputs' not in output or 'fine' not in output['voxel_outputs']:
+                print("[_record_state] 警告：输出中没有fine级别的voxel_outputs")
+                return
+
+            fine_output = output['voxel_outputs']['fine']  # SparseConvTensor
+
+            # 保存sparse特征和SDF（使用detach和clone避免显存泄露）
+            historical_state = {
+                'features': fine_output.features.detach().clone(),
+                'indices': fine_output.indices.detach().clone(),
+                'spatial_shape': fine_output.spatial_shape,
+                'batch_size': batch_size,
+                'resolution': self.resolutions['fine']
+            }
+
+            print(f"[_record_state] 已保存历史状态:")
+            print(f"  - features: {historical_state['features'].shape}")
+            print(f"  - indices: {historical_state['indices'].shape}")
 
         # 更新历史信息
         self.historical_state = historical_state
@@ -110,14 +143,11 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             self.historical_intrinsics = current_intrinsics.detach().clone()
         self.historical_3d_points = current_3d_points.detach().clone()
 
-        print(f"[_record_state] 已保存历史状态:")
-        print(f"  - features: {historical_state['features'].shape}")
-        print(f"  - indices: {historical_state['indices'].shape}")
-
     def _historical_state_project_sparse(self,
                                          current_pose: torch.Tensor,
                                          current_features: torch.Tensor,
-                                         current_indices: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+                                         current_indices: torch.Tensor,
+                                         current_multiscale: Optional[Dict] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         将历史状态投影到当前帧坐标系（稀疏版本）
 
@@ -125,8 +155,9 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
 
         Args:
             current_pose: [B, 4, 4] 当前帧Pose
-            current_features: [N, 1] 当前帧稀疏特征
+            current_features: [N, 1] 当前帧稀疏特征（fine级别）
             current_indices: [N, 4] 当前帧体素索引
+            current_multiscale: 当前帧的多尺度特征（可选）
 
         Returns:
             projected_features: [N, C] 投影的特征（128维）
@@ -138,9 +169,31 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
         device = current_pose.device
         num_current = current_features.shape[0]
 
-        # 获取历史稀疏特征
-        historical_features = self.historical_state['features']  # [N_hist, 1]
-        historical_indices = self.historical_state['indices']    # [N_hist, 4]
+        # 如果历史状态包含多尺度特征，优先使用fine级别
+        if 'multiscale' in self.historical_state:
+            hist_multiscale = self.historical_state['multiscale']
+
+            # 使用fine级别的特征进行投影
+            if 'fine' in hist_multiscale:
+                hist_fine = hist_multiscale['fine']
+                historical_features = hist_fine['features']  # [N_hist, C]
+                historical_logits = hist_fine['logits']  # [N_hist, 1] - 已经是tensor
+                print(f"[_historical_state_project_sparse] 使用历史多尺度fine特征: {historical_features.shape}")
+            else:
+                # 降级到medium
+                if 'medium' in hist_multiscale:
+                    hist_medium = hist_multiscale['medium']
+                    historical_features = hist_medium['features']
+                    historical_logits = hist_medium['logits']
+                else:
+                    # 最后使用coarse
+                    hist_coarse = hist_multiscale['coarse']
+                    historical_features = hist_coarse['features']
+                    historical_logits = hist_coarse['logits']
+        else:
+            # 兼容旧代码：从历史状态直接提取
+            historical_features = self.historical_state['features']  # [N_hist, 1]
+            historical_logits = None
 
         print(f"[_historical_state_project_sparse] 历史特征: {historical_features.shape}, 当前特征: {current_features.shape}")
 
@@ -152,13 +205,15 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             projected_features = historical_features[:num_current]
             projected_sdfs = torch.zeros(num_current, 1, device=device)
         else:
-            # 重复最后一个特征
-            repeat_times = num_current - num_historical
-            last_feat = historical_features[-1:].repeat(repeat_times, 1)
-            projected_features = last_feat
+            # 重复历史特征以填满当前数量
+            # 计算需要重复的完整次数和剩余数量
+            repeat_count = (num_current + num_historical - 1) // num_historical  # 向上取整
+            # 拼接重复的历史特征
+            projected_features_list = [historical_features] * repeat_count
+            projected_features = torch.cat(projected_features_list, dim=0)[:num_current]
             projected_sdfs = torch.zeros(num_current, 1, device=device)
 
-        # 对齐特征维度到128（如果需要）
+        # 如果历史特征是SDF logits (C=1)，需要对齐到128维
         if projected_features.shape[1] != 128:
             if not hasattr(self, '_feat_aligner'):
                 in_dim = projected_features.shape[1]
@@ -306,13 +361,16 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
         # 3. 判断是否有历史信息
         use_fusion = self.historical_state is not None
 
+        # 初始化multiscale_features
+        multiscale_features = None
+
         if not use_fusion:
             # 第一帧：调用super().forward()
             print("[forward_single_frame] 第一帧，调用super().forward()")
 
-            result = super().forward(batch, voxel_inds_16, return_multiscale_features=False)
-            if len(result) == 3:
-                voxel_outputs, proj_occ_logits, bp_data = result
+            result = super().forward(batch, voxel_inds_16, return_multiscale_features=True)
+            if len(result) == 4:
+                voxel_outputs, proj_occ_logits, bp_data, multiscale_features = result
             else:
                 raise RuntimeError(f"Unexpected result length: {len(result)}")
 
@@ -324,9 +382,9 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             print("[forward_single_frame] 有历史信息，执行稀疏融合")
 
             # 1) 调用super().forward()获取当前帧特征
-            result = super().forward(batch, voxel_inds_16, return_multiscale_features=False)
-            if len(result) == 3:
-                voxel_outputs, proj_occ_logits, bp_data = result
+            result = super().forward(batch, voxel_inds_16, return_multiscale_features=True)
+            if len(result) == 4:
+                voxel_outputs, proj_occ_logits, bp_data, multiscale_features = result
             else:
                 raise RuntimeError(f"Unexpected result length: {len(result)}")
 
@@ -339,7 +397,8 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             projected_features, projected_sdfs = self._historical_state_project_sparse(
                 poses,
                 current_features,
-                current_indices
+                current_indices,
+                multiscale_features  # 传递当前帧的多尺度特征
             )  # [N, 128], [N, 1]
 
             # 4) 稀疏融合：concat + MLP
@@ -369,7 +428,7 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
         current_indices = output['voxel_outputs']['fine'].indices  # [N, 4]
         current_3d_points = current_indices[:, 1:4].float() * self.resolutions['fine']  # [N, 3]
 
-        self._record_state(output, poses, intrinsics, current_3d_points)
+        self._record_state(output, poses, intrinsics, current_3d_points, multiscale_features)
 
         # 5. 返回新状态
         new_state = self.historical_state
