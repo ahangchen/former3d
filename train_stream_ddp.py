@@ -14,7 +14,13 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
+# 使TensorBoard成为可选项
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    TENSORBOARD_AVAILABLE = True
+except (ImportError, AttributeError):
+    TENSORBOARD_AVAILABLE = False
+    SummaryWriter = None
 import numpy as np
 
 # 添加项目路径
@@ -255,10 +261,13 @@ def main():
 
     # 创建TensorBoard logger
     logger = None
-    if is_main_process():
+    if is_main_process() and TENSORBOARD_AVAILABLE:
         log_dir = os.path.join(args.save_dir, 'logs')
         os.makedirs(log_dir, exist_ok=True)
         logger = SummaryWriter(log_dir)
+        print_rank_0(f"TensorBoard日志将保存到: {log_dir}")
+    elif is_main_process():
+        print_rank_0("TensorBoard不可用，跳过日志记录")
 
     # 创建模型
     print_rank_0("创建模型...")
