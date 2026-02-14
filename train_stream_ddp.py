@@ -48,6 +48,16 @@ except ImportError as e:
     MultiSequenceTartanAirDataset = None
     DATASET_AVAILABLE = False
 
+# 导入Rerun可视化器
+try:
+    from rerun_visualizer import RerunVisualizer
+    RERUN_VIZ_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Unable to import RerunVisualizer: {e}")
+    print("Will skip visualization features")
+    RERUN_VIZ_AVAILABLE = False
+    RerunVisualizer = None
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='DDP流式3D重建训练')
@@ -84,6 +94,11 @@ def parse_args():
     parser.add_argument('--resume', type=str, default='', help='恢复训练的检查点路径')
     parser.add_argument('--seed', type=int, default=42, help='随机种子')
 
+    # Rerun可视化参数
+    parser.add_argument('--enable-rerun-viz', action='store_true', help='启用Rerun可视化')
+    parser.add_argument('--rerun-viz-dir', type=str, default='viz', help='Rerun可视化输出目录')
+    parser.add_argument('--rerun-viz-freq', type=int, default=1, help='可视化频率（每N个epoch记录一次）')
+
     return parser.parse_args()
 
 
@@ -111,6 +126,94 @@ def create_optimizer(model, args):
     )
 
     return optimizer
+
+
+def prepare_visualization_data(batch, outputs, sequence_length):
+    """
+    准备可视化数据，将batch和模型输出转换为RerunVisualizer期望的格式
+
+    Args:
+        batch: 原始batch数据
+        outputs: 模型输出
+        sequence_length: 序列长度
+
+    Returns:
+        dict: 可视化数据字典
+    """
+    # 提取RGB图像并转换通道顺序：(batch, n_view, 3, H, W) -> (batch, n_view, H, W, 3)
+    rgb_images = batch['rgb_images'].permute(0, 1, 3, 4, 2).cpu().numpy()  # (batch, n_view, H, W, 3)
+
+    # 计算深度图（从TSDF的第一层提取作为近似）
+    # TSDF格式：(batch, 1, D, H, W)，取D=0层作为深度近似
+    tsdf = batch['tsdf'].cpu()  # (batch, 1, D, H, W)
+    rgb_height, rgb_width = batch['rgb_images'].shape[3], batch['rgb_images'].shape[4]
+
+    if tsdf.shape[2] > 0:  # 如果有深度维度
+        depth_tsdf = tsdf[:, 0, 0, :, :]  # (batch, H_tsdf, W_tsdf)
+        # 使用上采样或下采样匹配RGB分辨率
+        from torch.nn.functional import interpolate
+        depth_tsdf = depth_tsdf.unsqueeze(1)  # (batch, 1, H_tsdf, W_tsdf)
+        depth_upsampled = interpolate(depth_tsdf, size=(rgb_height, rgb_width),
+                                    mode='bilinear', align_corners=False)
+        depth_upsampled = depth_upsampled.squeeze(1)  # (batch, H, W)
+        # 扩展到n_view维度
+        depth = depth_upsampled.unsqueeze(1).repeat(1, sequence_length, 1, 1)  # (batch, n_view, H, W)
+    else:
+        # 如果没有深度维度，创建零深度
+        depth = torch.zeros(batch['rgb_images'].shape[0], sequence_length,
+                         rgb_height, rgb_width)
+    depth = depth.numpy()
+
+    # 提取相机参数
+    poses = batch['poses'].cpu().numpy()  # (batch, n_view, 4, 4)
+    intrinsics = batch['intrinsics'].cpu().numpy()  # (batch, n_view, 3, 3)
+
+    # 计算占用真值：从TSDF计算
+    # 占用 = |TSDF| < 0.5
+    tsdf_numpy = batch['tsdf'].cpu().numpy()
+    occupancy = (np.abs(tsdf_numpy) < 0.5).astype(np.float32)  # (batch, 1, D, H, W)
+
+    # 准备基础可视化数据
+    viz_data = {
+        'rgb_images': rgb_images,
+        'depth': depth,
+        'poses': poses,
+        'intrinsics': intrinsics,
+        'tsdf': tsdf_numpy,
+        'occupancy': occupancy
+    }
+
+    # 尝试提取预测数据（如果可用）
+    if outputs is not None:
+        if isinstance(outputs, dict):
+            # 处理字典格式的输出
+            if 'sdf' in outputs and outputs['sdf'] is not None:
+                sdf_pred = outputs['sdf']  # 可能格式：(batch, n_view, N, 1) 或其他
+                # 转换为numpy
+                if isinstance(sdf_pred, torch.Tensor):
+                    sdf_pred = sdf_pred.detach().cpu().numpy()
+                # 尝试reshape为(batch, N, 1)
+                if len(sdf_pred.shape) == 4:  # (batch, n_view, N, 1)
+                    # 取最后一个view的预测
+                    sdf_pred = sdf_pred[:, -1, :, :]  # (batch, N, 1)
+                elif len(sdf_pred.shape) == 3:  # (batch, N, 1) 或 (N, 1)
+                    # 确保是(batch, N, 1)格式
+                    if sdf_pred.shape[0] != batch['rgb_images'].shape[0]:
+                        # 可能是(N, 1)格式，扩展到batch
+                        sdf_pred = sdf_pred.unsqueeze(0).repeat(batch['rgb_images'].shape[0], 1, 1)
+                viz_data['sdf_pred'] = sdf_pred
+
+            # 其他预测格式（如occupancy prediction）
+            # 根据实际模型输出添加
+        else:
+            # 处理tensor格式的输出
+            if isinstance(outputs, torch.Tensor):
+                outputs_np = outputs.detach().cpu().numpy()
+                # 尝试判断这是什么类型的预测
+                if len(outputs_np.shape) == 5:  # (batch, 1, D, H, W) - 可能是占用预测
+                    viz_data['occ_pred'] = outputs_np
+
+    return viz_data
 
 
 def compute_loss(outputs, targets, frame_data):
@@ -222,7 +325,16 @@ def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
     # 计时
     start_time = time.time()
 
+    # 保存最后一个batch和outputs用于可视化
+    last_batch = None
+    last_outputs = None
+    final_sequence_length = 0
+
     for batch_idx, batch in enumerate(dataloader):
+        # 保存最后一个batch用于可视化
+        last_batch = batch
+        final_sequence_length = batch['rgb_images'].shape[1]
+
         # 提取数据
         images = batch['rgb_images']  # (batch, n_view, 3, H, W)
         poses = batch['poses']          # (batch, n_view, 4, 4)
@@ -242,6 +354,9 @@ def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
         try:
             # forward_sequence内部会遍历所有帧
             outputs, states = model.module.forward_sequence(images, poses, intrinsics, reset_state=True)
+
+            # 保存最后一个outputs用于可视化
+            last_outputs = outputs
 
             # 计算损失
             targets = batch.get('tsdf', None)
@@ -290,7 +405,7 @@ def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
     # 同步损失（在所有进程间）
     loss_meter.all_reduce()
 
-    return loss_meter.avg
+    return loss_meter.avg, last_batch, last_outputs, final_sequence_length
 
 
 def validate(model, dataloader, args):
@@ -468,6 +583,28 @@ def main():
         collate_fn=MultiSequenceTartanAirDataset.collate_fn if DATASET_AVAILABLE and MultiSequenceTartanAirDataset is not None else None
     )
 
+    # 创建Rerun可视化器
+    visualizer = None
+    if is_main_process() and RERUN_VIZ_AVAILABLE and args.enable_rerun_viz:
+        print_rank_0(f"✅ 启用Rerun可视化")
+        print_rank_0(f"ℹ️  使用全局模式：所有epoch数据保存到单个文件")
+
+        # 创建可视化目录
+        viz_dir = os.path.join(args.save_dir, args.rerun_viz_dir)
+        os.makedirs(viz_dir, exist_ok=True)
+
+        # 初始化可视化器
+        visualizer = RerunVisualizer(save_dir=viz_dir, global_mode=True)
+        # 在训练开始前初始化recording（全局模式只需要初始化一次）
+        visualizer.start_recording()
+        print_rank_0(f"可视化输出目录: {viz_dir}")
+    elif is_main_process() and args.enable_rerun_viz and not RERUN_VIZ_AVAILABLE:
+        print_rank_0("⚠️ 请求启用Rerun可视化，但RerunVisualizer不可用")
+        print_rank_0("⚠️ 请检查rerun_visualizer.py是否存在且可以导入")
+    else:
+        if is_main_process():
+            print_rank_0("ℹ️  Rerun可视化已禁用")
+
     # 训练循环
     print_rank_0("\n开始训练...")
     print_rank_0("="*60)
@@ -485,7 +622,7 @@ def main():
         print_rank_0("-" * 60)
 
         # 训练
-        train_loss = train_one_epoch(
+        train_loss, last_batch, last_outputs, seq_len = train_one_epoch(
             model, train_loader, optimizer, epoch, args, logger
         )
 
@@ -506,6 +643,23 @@ def main():
             logger.add_scalar('epoch/train_loss', train_loss, epoch)
             logger.add_scalar('epoch/val_loss', val_loss, epoch)
             logger.add_scalar('epoch/epoch_time', epoch_time, epoch)
+
+        # 执行Rerun可视化（如果启用且达到频率）
+        if visualizer and (epoch % args.rerun_viz_freq == 0):
+            try:
+                print_rank_0(f"正在记录epoch {epoch+1}的可视化数据...")
+
+                # 准备可视化数据
+                viz_data = prepare_visualization_data(last_batch, last_outputs, seq_len)
+
+                # 记录可视化（全局模式：不需要start_recording和finish_recording）
+                visualizer.log_sample(viz_data, epoch, n_view=seq_len)
+
+                print_rank_0(f"✅ 可视化数据已记录（全局文件: {visualizer.output_path})")
+            except Exception as e:
+                print_rank_0(f"⚠️ 可视化记录失败: {e}")
+                import traceback
+                traceback.print_exc()
 
         # 保存检查点
         if (epoch + 1) % args.save_frequency == 0 or val_loss < best_loss:
@@ -533,6 +687,17 @@ def main():
     # 关闭TensorBoard logger
     if is_main_process() and logger is not None:
         logger.close()
+
+    # 完成Rerun可视化（如果启用）
+    if visualizer:
+        try:
+            print_rank_0("正在完成Rerun可视化记录...")
+            visualizer.finish_recording()
+            print_rank_0(f"✅ 可视化数据已全部保存到: {visualizer.output_path}")
+        except Exception as e:
+            print_rank_0(f"⚠️ 可视化完成失败: {e}")
+            import traceback
+            traceback.print_exc()
 
     # 清理分布式环境
     cleanup_distributed()
