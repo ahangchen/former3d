@@ -19,7 +19,6 @@ from former3d.net3d.former_v1 import Former3D as backbone3d
 from former3d.net3d.sparse3d import combineSparseConvTensor, xyzb2bxyz, bxyz2xyzb
 
 # 导入Phase 1的流式组件
-from former3d.pose_projection import PoseProjection
 from former3d.stream_fusion_concat import StreamConcatFusion
 from former3d.stream_projection import HistoricalFeatureProjector
 from former3d.pose_aware_projection import PoseAwareFeatureProjector
@@ -342,7 +341,6 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.use_checkpoint = use_checkpoint
 
         # 添加流式组件
-        self.pose_projection = PoseProjection()
         # 新版本：PoseBasedFeatureProjection用于多尺度特征和SDF投影
         self.pose_based_projection = PoseBasedFeatureProjection(voxel_size=self.voxel_size)
 
@@ -381,9 +379,6 @@ class StreamSDFFormerIntegrated(SDFFormer):
         )
         self.fusion_3d_enabled = True  # 启用3D卷积融合
 
-        # 轻量级状态模式（防止内存泄漏）
-        self.lightweight_state_mode = True  # 默认启用轻量级模式
-        
         # 流式特定的投影网络
         self.img_feat_projection = nn.Sequential(
             nn.Linear(3, 64),  # 输入：3D坐标
@@ -609,35 +604,9 @@ class StreamSDFFormerIntegrated(SDFFormer):
             # 新格式：直接返回，包含dense_grids和SDF
             # _apply_stream_fusion会直接使用这些字段
             return historical_state
-        elif self.lightweight_state_mode and 'sparse_indices' in historical_state:
-            # Lightweight模式第一帧：没有dense_grids，但需要兼容旧格式
-            # 创建临时coords字段用于向后兼容
-            print(f"[Debug] Lightweight模式检查: sparse_indices={('sparse_indices' in historical_state)}, "
-                  f"lightweight={self.lightweight_state_mode}, dense_grids={('dense_grids' in historical_state)}")
-            if 'coords' not in historical_state and 'sparse_indices' in historical_state:
-                # 使用第一个分辨率的sparse_indices创建临时coords
-                sparse_inds = historical_state['sparse_indices']
-                first_res = list(sparse_inds.keys())[0]
-                indices = sparse_inds[first_res]
-                # 从indices创建coords（米为单位）
-                coords = indices[:, :3].float() * self.resolutions[first_res]
-                features = torch.randn(indices.shape[0], 128, device=coords.device)
-                historical_state['coords'] = coords
-                historical_state['features'] = features
-                historical_state['batch_inds'] = indices[:, 3]  # batch索引
-                print(f"[Debug] 创建临时coords: shape={coords.shape}")
-            return historical_state
-        else:
-            print(f"[Debug] 进入else分支! lightweight={self.lightweight_state_mode}, sparse_indices={('sparse_indices' in historical_state)}, dense_grids={('dense_grids' in historical_state)}")
-            # 旧格式：使用PoseProjection处理
-            # 向后兼容，但不会包含dense_grids
-            projected_state = self.pose_projection(
-                historical_state,
-                self.historical_pose,
-                current_pose
-            )
 
-            return projected_state
+        # 如果到达这里，说明历史状态格式错误
+        raise RuntimeError(f"Invalid historical state format: missing 'dense_grids'. Available keys: {list(historical_state.keys())}")
     
     def forward_single_frame(self, 
                             images: torch.Tensor,
@@ -1004,17 +973,12 @@ class StreamSDFFormerIntegrated(SDFFormer):
         batch_size = current_pose.shape[0]
         device = current_pose.device
 
-        # 检查是否有multiscale_features（Phase 3改进）
-        if 'multiscale_features' not in output or output['multiscale_features'] is None:
-            print("警告：输出中没有multiscale_features，使用legacy状态")
-            return self._create_legacy_state(output, current_pose)
-
+        # 获取multiscale_features
         multiscale_features = output['multiscale_features']
 
         # 检查是否至少有一个分辨率级别的特征
         if len(multiscale_features) == 0:
-            print("警告：multiscale_features为空，使用legacy状态")
-            return self._create_legacy_state(output, current_pose)
+            raise RuntimeError("multiscale_features为空，无法创建新状态")
 
         # 将每个分辨率的稀疏特征转换为密集网格
         dense_grids = {}
@@ -1026,15 +990,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
             features_data = multiscale_features[resname]
             sparse_tensor = features_data['features']  # SparseConvTensor
 
-            # 转换为密集网格（如果lightweight模式且没有历史状态，跳过）
-            if self.lightweight_state_mode and self.historical_pose is None:
-                # 轻量级模式且第一帧：不创建dense_grids，节省显存
-                sparse_indices[resname] = sparse_tensor.indices  # [N, 4]
-                spatial_shapes[resname] = sparse_tensor.spatial_shape  # [D, H, W]
-                resolutions[resname] = features_data['resolution']
-                continue
-
-            # 正常模式或有历史状态：创建密集网格
+            # 转换为密集网格
             dense_grid = self._sparse_to_dense_grid(sparse_tensor, batch_size)
 
             # 保存数据
@@ -1049,10 +1005,8 @@ class StreamSDFFormerIntegrated(SDFFormer):
         sdf_spatial_shape = None
         sdf_resolution = None
 
-        # 只有在非lightweight模式或有历史状态时才创建SDF dense grid
-        create_sdf_grid = not self.lightweight_state_mode or self.historical_pose is not None
-
-        if create_sdf_grid and 'voxel_outputs' in output and 'fine' in output['voxel_outputs']:
+        # 创建SDF dense grid
+        if 'voxel_outputs' in output and 'fine' in output['voxel_outputs']:
             fine_output = output['voxel_outputs']['fine']  # SparseConvTensor
 
             if fine_output is not None:
@@ -1088,44 +1042,29 @@ class StreamSDFFormerIntegrated(SDFFormer):
         else:
             print("[Phase 1] 警告：输出中没有voxel_outputs或fine，未保存SDF")
 
-        # 保存状态（lightweight模式下第一帧只保存sparse indices）
+        # 保存新状态
         new_state = {
             'batch_size': batch_size,
             'pose': current_pose.detach().clone(),
         }
 
-        # 只在需要时保存dense_grids
-        if not self.lightweight_state_mode or self.historical_pose is not None:
-            new_state['dense_grids'] = dense_grids        # {resname: [B, C, D, H, W]}
-            new_state['sparse_indices'] = sparse_indices     # {resname: [N, 4]}
-            new_state['spatial_shapes'] = spatial_shapes      # {resname: [D, H, W]}
-            new_state['resolutions'] = resolutions             # {resname: float}
-        else:
-            # Lightweight模式第一帧：只保存sparse indices
-            new_state['sparse_indices'] = sparse_indices
-            new_state['spatial_shapes'] = spatial_shapes
-            new_state['resolutions'] = resolutions
+        # 保存dense_grids
+        new_state['dense_grids'] = dense_grids        # {resname: [B, C, D, H, W]}
+        new_state['sparse_indices'] = sparse_indices     # {resname: [N, 4]}
+        new_state['spatial_shapes'] = spatial_shapes      # {resname: [D, H, W]}
+        new_state['resolutions'] = resolutions             # {resname: float}
 
-        # 只在需要时保存SDF相关字段
-        if not self.lightweight_state_mode or self.historical_pose is not None:
-            if sdf_grid is not None:
-                new_state['sdf_grid'] = sdf_grid  # [B, 1, D, H, W]
-                new_state['sdf_indices'] = sdf_indices  # [N, 4]
-                new_state['sdf_spatial_shape'] = sdf_spatial_shape  # [D, H, W]
-                new_state['sdf_resolution'] = sdf_resolution  # float
-        else:
-            # Lightweight模式第一帧：只保存SDF sparse indices
-            if sdf_indices is not None:
-                new_state['sdf_indices'] = sdf_indices
-                new_state['sdf_spatial_shape'] = sdf_spatial_shape
-                new_state['sdf_resolution'] = sdf_resolution
+        # 保存SDF相关字段
+        if sdf_grid is not None:
+            new_state['sdf_grid'] = sdf_grid  # [B, 1, D, H, W]
+            new_state['sdf_indices'] = sdf_indices  # [N, 4]
+            new_state['sdf_spatial_shape'] = sdf_spatial_shape  # [D, H, W]
+            new_state['sdf_resolution'] = sdf_resolution  # float
 
-        if not self.lightweight_state_mode or self.historical_pose is not None:
-            print(f"创建新状态: 保存{len(dense_grids)}个分辨率级别")
-            for resname in dense_grids:
-                print(f"  {resname}: 密集网格{dense_grids[resname].shape}")
-        else:
-            print(f"[Lightweight Mode] 第一帧跳过dense_grids，只保存sparse indices")
+        # 总是保存dense_grids
+        print(f"创建新状态: 保存{len(dense_grids)}个分辨率级别")
+        for resname in dense_grids:
+            print(f"  {resname}: 密集网格{dense_grids[resname].shape}")
 
         # Pose-Aware投影：使用Pose将历史特征和SDF投影到当前坐标系
         projected_features = None
@@ -1164,72 +1103,7 @@ class StreamSDFFormerIntegrated(SDFFormer):
             new_state['projected_features'] = projected_features
 
         # 轻量级模式：删除dense_grids等大内存占用字段
-        if self.lightweight_state_mode and projected_features is not None:
-            # 只删除大的密集网格，保留sparse_indices等元数据
-            # 保留sparse_indices、spatial_shapes、resolutions用于后续投影
-            # 只删除dense_grids和sdf_grid这些大的密集网格
-            new_state.pop('dense_grids', None)
-            new_state.pop('sdf_grid', None)
-            print(f"[Lightweight Mode] 只保存投影特征和sparse indices，跳过dense_grids")
-
         return new_state
-
-    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor, current_voxel_indices: Optional[torch.Tensor] = None) -> Dict:
-        """
-        创建legacy状态（用于向后兼容）
-
-        Args:
-            output: 当前帧输出
-            current_pose: 当前帧相机位姿
-            current_voxel_indices: 当前帧体素索引（保持接口一致性）
-
-        Returns:
-            新的历史状态字典
-        """
-        batch_size = current_pose.shape[0]
-        device = current_pose.device
-
-        # 尝试从输出中提取真实的体素数据
-        if 'voxel_outputs' in output and 'fine' in output['voxel_outputs']:
-            fine_output = output['voxel_outputs']['fine']
-
-            if hasattr(fine_output, 'features') and hasattr(fine_output, 'indices'):
-                # 使用真实的体素数据
-                features = fine_output.features  # [N, 1]
-                indices = fine_output.indices    # [N, 4] (x, y, z, batch_idx)
-                
-                # 扩展特征维度（从1到128）
-                if features.shape[1] == 1 and hasattr(self, 'feature_expansion'):
-                    features = self.feature_expansion(features)  # [N, 128]
-                
-                # 提取坐标和批次索引
-                coords = indices[:, :3].float() * self.resolutions['fine']
-                batch_inds = indices[:, 3].long()
-                
-                # 提取SDF和占用（如果可用）
-                sdf = output.get('sdf', None)
-                occupancy = output.get('occupancy', None)
-                
-                # 基础状态信息（始终保存）
-                new_state = {
-                    'features': features,
-                    'sdf': sdf,
-                    'occupancy': occupancy,
-                    'coords': coords,
-                    'batch_inds': batch_inds,
-                    'num_voxels': features.shape[0],
-                    'pose': current_pose.detach().clone(),
-                }
-
-                # 轻量级模式：只保存必要信息，不保存完整输出
-                # 默认启用轻量级模式以防止内存泄漏
-                if not self.lightweight_state_mode:
-                    # 非轻量级模式：保存完整输出以供调试（不推荐）
-                    new_state['output'] = output
-                    new_state['original_features'] = fine_output.features
-                    logger.warning("⚠️  非轻量级模式：保存完整输出可能导致内存泄漏")
-                
-                return new_state
 
     def _sparse_to_dense_grid(self, sparse_tensor, batch_size):
         """
@@ -1264,91 +1138,6 @@ class StreamSDFFormerIntegrated(SDFFormer):
 
         return dense_grid
 
-    def _create_legacy_state(self, output: Dict, current_pose: torch.Tensor, current_voxel_indices: Optional[torch.Tensor] = None) -> Dict:
-        """
-        创建legacy状态（用于向后兼容）
-
-        Args:
-            output: 当前帧输出
-            current_pose: 当前帧相机位姿
-            current_voxel_indices: 当前帧体素索引（保持接口一致性）
-
-        Returns:
-            新的历史状态字典
-        """
-        batch_size = current_pose.shape[0]
-        device = current_pose.device
-
-        num_voxels_per_batch = 500
-        total_voxels = batch_size * num_voxels_per_batch
-
-        # 生成坐标
-        max_coord = torch.tensor(self.crop_size, device=device).float() * self.resolutions['coarse']
-        coords = torch.rand(total_voxels, 3, device=device) * max_coord
-
-        # 批次索引
-        batch_inds = torch.repeat_interleave(
-            torch.arange(batch_size, device=device),
-            num_voxels_per_batch
-        )
-
-        # 生成特征
-        feature_dim = 128
-        features = torch.randn(total_voxels, feature_dim, device=device)
-
-        # 生成SDF和占用（模拟）
-        sdf = torch.randn(total_voxels, 1, device=device)
-        occupancy = torch.randn(total_voxels, 1, device=device)
-
-        new_state = {
-            'features': features,
-            'sdf': sdf,
-            'occupancy': occupancy,
-            'coords': coords,
-            'batch_inds': batch_inds,
-            'num_voxels': total_voxels,
-            'pose': current_pose.detach().clone(),
-        }
-
-        return new_state
-        
-        # 如果无法提取真实数据，使用简化版本（向后兼容）
-        print("警告：使用简化的历史状态创建")
-        num_voxels_per_batch = 500
-        total_voxels = batch_size * num_voxels_per_batch
-        
-        # 生成坐标
-        max_coord = torch.tensor(self.crop_size, device=device).float() * self.resolutions['coarse']
-        coords = torch.rand(total_voxels, 3, device=device) * max_coord
-        
-        # 批次索引
-        batch_inds = torch.repeat_interleave(
-            torch.arange(batch_size, device=device), 
-            num_voxels_per_batch
-        )
-        
-        # 生成特征
-        feature_dim = 128
-        features = torch.randn(total_voxels, feature_dim, device=device)
-        
-        # 生成SDF和占用（模拟）
-        sdf = torch.randn(total_voxels, 1, device=device)
-        occupancy = torch.randn(total_voxels, 1, device=device)
-        
-        new_state = {
-            'features': features,
-            'sdf': sdf,
-            'occupancy': occupancy,
-            'coords': coords,
-            'batch_inds': batch_inds,
-            'num_voxels': total_voxels,
-            'pose': current_pose.detach().clone(),
-            # 移除完整输出保存，防止内存泄漏
-            # 'output': output  # ❌ 删除：保存完整输出导致内存泄漏
-        }
-        
-        return new_state
-    
     def forward(self,
                images: torch.Tensor,
                poses: torch.Tensor,
@@ -1402,26 +1191,6 @@ class StreamSDFFormerIntegrated(SDFFormer):
         self.historical_intrinsics = None
         print("历史状态已清除")
 
-    def enable_lightweight_state(self, enabled: bool = True):
-        """启用或禁用轻量级状态模式
-
-        轻量级状态模式只保存必要的特征信息，避免保存完整输出，
-        从而防止内存泄漏并减少显存占用。
-
-        Args:
-            enabled: 是否启用轻量级状态模式
-        """
-        self.lightweight_state_mode = enabled
-
-        # 如果切换到轻量级模式，清理当前历史状态中的冗余数据
-        if enabled and self.historical_state is not None:
-            if 'output' in self.historical_state:
-                del self.historical_state['output']
-            if 'original_features' in self.historical_state:
-                del self.historical_state['original_features']
-
-        print(f"轻量级状态模式已{'启用' if enabled else '禁用'}")
-    
     def reset_state(self):
         """重置状态（clear_history的别名）"""
         self.clear_history()
