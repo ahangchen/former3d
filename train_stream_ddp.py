@@ -144,12 +144,18 @@ def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
         intrinsics = batch['intrinsics']
 
         # 移动到GPU
-        device = images.device
+        device = torch.device('cuda')
+
+        # 将数据移到GPU
+        images = images.to(device)
+        poses = poses.to(device)
+        intrinsics = intrinsics.to(device)
 
         # 调用forward_sequence
         # DDP会自动将model.forward_sequence调用分发到各个GPU
+        # 需要访问model.module来调用forward_sequence
         try:
-            outputs, states = model.forward_sequence(images, poses, intrinsics, reset_state=True)
+            outputs, states = model.module.forward_sequence(images, poses, intrinsics, reset_state=True)
 
             # 计算损失
             targets = batch.get('tsdf', None)

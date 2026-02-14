@@ -14,6 +14,8 @@ Programming Guidelines
     - Then, clean up all newly created intermediate/debug files that are not needed
     - Keep only the final effective new files
     - Finally, commit the clean state with `git commit` again
+11. **Required:** Place all test results, test logs in the `test_results` directory;
+12. **Required:** Place all test reports in the `test_reports` directory;
 
 ## Memory Management and Training Configuration
 
