@@ -5,6 +5,10 @@ echo "========================================="
 echo "启动DDP多卡训练"
 echo "========================================="
 
+# 激活conda环境
+echo "激活conda环境: former3d"
+source /home/cwh/miniconda3/bin/activate former3d
+
 # 检查参数
 NUM_GPUS=${1:-2}  # 默认使用2个GPU
 PORT=${2:-29500}  # 默认端口
@@ -27,8 +31,8 @@ echo "启动DDP训练..."
 echo "命令: torchrun --nproc_per_node=$NUM_GPUS --master_port=$PORT train_stream_ddp.py --batch-size 4 --epochs 10 --learning-rate 1e-4"
 echo ""
 
-# 启动DDP训练
-torchrun \
+# 启动DDP训练（使用conda环境中的torchrun）
+/home/cwh/miniconda3/envs/former3d/bin/torchrun \
     --nproc_per_node=$NUM_GPUS \
     --master_port=$PORT \
     train_stream_ddp.py \
