@@ -262,8 +262,29 @@ class PoseAwareStreamSdfFormer(SDFFormer):
                 projected_sdfs_list.append(torch.zeros(0, 1, device=device))
 
         # 拼接所有batch
-        projected_features = torch.cat(projected_features_list, dim=0)  # [N_valid, C]
-        projected_sdfs = torch.cat(projected_sdfs_list, dim=0)  # [N_valid, 1]
+        # 如果某些batch没有有效点，会导致维度不匹配
+        # 需要在cat之前确保所有tensor的维度（除了dim 0）相同
+        if len(projected_features_list) > 0:
+            projected_features = torch.cat(projected_features_list, dim=0)  # [N_valid, C]
+        else:
+            # 没有有效点，返回零特征
+            num_current = current_voxel_indices.shape[0]
+            device = current_pose.device
+            return (
+                torch.zeros(num_current, 128, device=device),
+                torch.zeros(num_current, 1, device=device)
+            )
+
+        if len(projected_sdfs_list) > 0:
+            projected_sdfs = torch.cat(projected_sdfs_list, dim=0)  # [N_valid, 1]
+        else:
+            # 没有有效点，返回零SDF
+            num_current = current_voxel_indices.shape[0]
+            device = current_pose.device
+            return (
+                torch.zeros(num_current, 128, device=device),
+                torch.zeros(num_current, 1, device=device)
+            )
 
         # 7. 将投影特征映射到当前体素索引位置
         # 如果投影的特征数量与当前体素索引不同，需要进行对齐
@@ -327,7 +348,10 @@ class PoseAwareStreamSdfFormer(SDFFormer):
 
         # 填充稀疏特征
         for i in range(len(features)):
-            b, x, y, z = indices[i].tolist()
+            b = int(indices[i, 0].item())
+            x = int(indices[i, 1].item())
+            y = int(indices[i, 2].item())
+            z = int(indices[i, 3].item())
 
             # 检查索引是否在有效范围内
             if 0 <= b < batch_size and 0 <= x < spatial_shape[0] and 0 <= y < spatial_shape[1] and 0 <= z < spatial_shape[2]:
@@ -520,7 +544,10 @@ class PoseAwareStreamSdfFormer(SDFFormer):
             # 提取sparse体素位置的融合特征
             fusion_sparse_features = []
             for i in range(len(current_voxel_indices)):
-                b, x, y, z = current_voxel_indices[i].tolist()
+                b = int(current_voxel_indices[i, 0].item())
+                x = int(current_voxel_indices[i, 1].item())
+                y = int(current_voxel_indices[i, 2].item())
+                z = int(current_voxel_indices[i, 3].item())
                 if 0 <= b < batch_size and 0 <= x < current_fine_sparse.spatial_shape[0] and \
                    0 <= y < current_fine_sparse.spatial_shape[1] and 0 <= z < current_fine_sparse.spatial_shape[2]:
                     fusion_sparse_features.append(fusion_features[b, :, x, y, z])
@@ -653,6 +680,9 @@ class PoseAwareStreamSdfFormer(SDFFormer):
 
         # 拼接
         voxel_inds = torch.cat([x, y, z, batch_inds], dim=1)  # [N, 4]
+
+        # 转换为int32类型（spconv要求）
+        voxel_inds = voxel_inds.to(torch.int32)
 
         return voxel_inds
 
