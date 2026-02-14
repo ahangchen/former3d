@@ -44,7 +44,7 @@ def cleanup_distributed():
             print("✅ 分布式环境已清理")
 
 
-def create_distributed_dataloader(dataset, batch_size, num_workers=4, shuffle=True):
+def create_distributed_dataloader(dataset, batch_size, num_workers=4, shuffle=True, collate_fn=None):
     """
     创建分布式数据加载器
 
@@ -53,6 +53,7 @@ def create_distributed_dataloader(dataset, batch_size, num_workers=4, shuffle=Tr
         batch_size: 总batch size（会被均匀分配到各个GPU）
         num_workers: 每个GPU的worker数量
         shuffle: 是否打乱数据
+        collate_fn: 自定义collate函数（可选）
 
     Returns:
         DataLoader, DistributedSampler: 数据加载器和采样器
@@ -76,7 +77,8 @@ def create_distributed_dataloader(dataset, batch_size, num_workers=4, shuffle=Tr
         sampler=sampler,
         num_workers=num_workers,
         pin_memory=True,
-        drop_last=True  # 确保所有GPU的batch size相同
+        drop_last=True,  # 确保所有GPU的batch size相同
+        collate_fn=collate_fn  # 添加collate_fn参数
     )
 
     if dist.get_rank() == 0:
@@ -85,6 +87,8 @@ def create_distributed_dataloader(dataset, batch_size, num_workers=4, shuffle=Tr
         print(f"   - 每GPU batch size: {per_gpu_batch_size}")
         print(f"   - GPU数量: {world_size}")
         print(f"   - 每GPU workers: {num_workers}")
+        if collate_fn is not None:
+            print(f"   - 使用自定义collate_fn")
 
     return dataloader, sampler
 
@@ -247,7 +251,9 @@ class AverageMeter:
     def all_reduce(self):
         """在所有进程间减少值"""
         if dist.is_initialized() and dist.get_world_size() > 1:
-            tensor = torch.tensor([self.sum, self.count], dtype=torch.float32)
+            # 确保张量在CUDA上（如果可用）
+            device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+            tensor = torch.tensor([self.sum, self.count], dtype=torch.float32, device=device)
             dist.all_reduce(tensor)
 
             # 对值求和，对计数也求和（因为每个进程统计的是自己的部分）

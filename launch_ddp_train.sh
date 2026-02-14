@@ -12,10 +12,12 @@ source /home/cwh/miniconda3/bin/activate former3d
 # 检查参数
 NUM_GPUS=${1:-2}  # 默认使用2个GPU
 PORT=${2:-29500}  # 默认端口
+EXTRA_ARGS="${@:3}"  # 额外的参数传递给训练脚本
 
 echo "参数:"
 echo "  - GPU数量: $NUM_GPUS"
 echo "  - 端口: $PORT"
+echo "  - 额外参数: $EXTRA_ARGS"
 echo ""
 
 # 检查GPU可用性
@@ -28,7 +30,7 @@ export NCCL_DEBUG=INFO
 export NCCL_SOCKET_IFNAME=^docker0,lo
 
 echo "启动DDP训练..."
-echo "命令: torchrun --nproc_per_node=$NUM_GPUS --master_port=$PORT train_stream_ddp.py --batch-size 4 --epochs 10 --learning-rate 1e-4"
+echo "命令: torchrun --nproc_per_node=$NUM_GPUS --master_port=$PORT train_stream_ddp.py $EXTRA_ARGS"
 echo ""
 
 # 启动DDP训练（使用conda环境中的torchrun）
@@ -36,10 +38,7 @@ echo ""
     --nproc_per_node=$NUM_GPUS \
     --master_port=$PORT \
     train_stream_ddp.py \
-    --batch-size 4 \
-    --epochs 10 \
-    --learning-rate 1e-4 \
-    --save-dir ./checkpoints/ddp_test
+    $EXTRA_ARGS
 
 echo ""
 echo "========================================="

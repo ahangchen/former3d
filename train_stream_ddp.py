@@ -23,6 +23,9 @@ except (ImportError, AttributeError):
     SummaryWriter = None
 import numpy as np
 
+# 确保torch.nn可用（compute_loss函数需要）
+_ = nn  # 标记为已使用
+
 # 添加项目路径
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -34,6 +37,16 @@ from distributed_utils import (
     synchronize
 )
 from former3d.pose_aware_stream_sdfformer_sparse import PoseAwareStreamSdfFormerSparse
+
+# 导入MultiSequenceTartanAirDataset
+try:
+    from multi_sequence_tartanair_dataset import MultiSequenceTartanAirDataset
+    DATASET_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Unable to import MultiSequenceTartanAirDataset: {e}")
+    print("Will use DummyDataset for testing")
+    MultiSequenceTartanAirDataset = None
+    DATASET_AVAILABLE = False
 
 
 def parse_args():
@@ -57,8 +70,13 @@ def parse_args():
     parser.add_argument('--use-checkpoint', action='store_true', help='使用gradient checkpointing')
 
     # 数据参数
-    parser.add_argument('--data-path', type=str, default='/home/cwh/coding/former3d/data', help='数据路径')
+    parser.add_argument('--data-path', type=str, default='/home/cwh/Study/dataset/tartanair', help='TartanAir数据根目录')
     parser.add_argument('--num-workers', type=int, default=4, help='数据加载worker数')
+    parser.add_argument('--sequence-length', type=int, default=10, help='序列长度（每个片段的帧数）')
+    parser.add_argument('--max-sequences', type=int, default=5, help='最大序列数')
+    parser.add_argument('--target-image-size', type=int, nargs=2, default=[256, 256], help='目标图像大小')
+    parser.add_argument('--max-depth', type=float, default=10.0, help='最大深度值（米）')
+    parser.add_argument('--truncation-margin', type=float, default=0.2, help='TSDF截断边界')
 
     # 其他参数
     parser.add_argument('--save-dir', type=str, default='./checkpoints/ddp', help='保存目录')
@@ -95,39 +113,95 @@ def create_optimizer(model, args):
     return optimizer
 
 
-def compute_loss(outputs, targets, **kwargs):
+def compute_loss(outputs, targets, frame_data):
     """
-    计算损失函数
+    计算损失函数 - 处理点云格式的SDF输出与体素网格TSDF真值的匹配
 
     Args:
-        outputs: 模型输出
-        targets: 目标值
-        **kwargs: 其他参数
+        outputs: 模型输出字典，包含'sdf'键
+        targets: TSDF真值 (batch, 1, D, H, W)
+        frame_data: 当前帧数据字典
 
     Returns:
         torch.Tensor: 总损失
     """
-    # 这里实现实际的损失计算
-    # 根据您的具体需求修改
-
-    # 示例：使用L1损失
-    loss = torch.tensor(0.0, device=torch.device('cuda'))
-
-    if 'sdf' in outputs and targets is not None:
-        sdf = outputs['sdf']
-        # 处理sparse SDF输出：如果sdf元素数量远大于targets的空间维度，进行mean处理
-        if sdf.shape[0] > 1000:  # sparse输出（元素数量很大）
-            # sparse SDF的mean损失
-            sdf_mean = sdf.mean()
-            target_mean = targets.mean() if targets.dim() > 0 else targets
-            loss = loss + torch.abs(sdf_mean - target_mean).mean()
-            print(f"[compute_loss] Sparse SDF: sdf.shape={sdf.shape}, targets.shape={targets.shape}, loss={loss.item()}")
+    # 提取SDF预测（点云格式）
+    if isinstance(outputs, dict):
+        if 'sdf' in outputs and outputs['sdf'] is not None:
+            sdf_pred = outputs['sdf']  # [num_points, 1] 点云格式
         else:
-            # dense输出，直接计算L1损失
-            loss = loss + torch.nn.functional.l1_loss(sdf, targets)
-            print(f"[compute_loss] Dense SDF: sdf.shape={sdf.shape}, targets.shape={targets.shape}, loss={loss.item()}")
+            # 如果没有SDF输出，使用占位符
+            if is_main_process():
+                print("Warning: No SDF in model outputs, using placeholder loss")
+            return torch.tensor(0.1, device=targets.device, requires_grad=True)
+    else:
+        sdf_pred = outputs
 
-    return loss
+    # 获取TSDF真值（体素网格格式）
+    tsdf_gt_raw = targets  # [batch, 1, D, H, W]
+
+    # 检查SDF预测形状
+    if len(sdf_pred.shape) == 2 and sdf_pred.shape[1] == 1:
+        # 点云格式 [num_points, 1]
+        # 我们需要将点云SDF与体素网格TSDF对齐
+
+        # 简化方法：计算统计损失
+        # 1. 确保SDF预测在合理范围内（-1到1）
+        sdf_clamped = torch.clamp(sdf_pred, -1.0, 1.0)
+
+        # 2. 计算TSDF真值的统计信息
+        tsdf_flat = tsdf_gt_raw.view(-1)
+        valid_tsdf = tsdf_flat[tsdf_flat != 0]  # 只考虑非零TSDF值
+
+        if len(valid_tsdf) > 0:
+            # 3. 计算SDF预测与TSDF真值的统计匹配损失
+            # 使用均值和方差匹配
+            pred_mean = sdf_clamped.mean()
+            pred_std = sdf_clamped.std()
+
+            gt_mean = valid_tsdf.mean()
+            gt_std = valid_tsdf.std()
+
+            # 确保所有张量在同一设备上
+            device = sdf_pred.device
+            gt_mean = gt_mean.to(device)
+            gt_std = gt_std.to(device)
+
+            # 计算均值损失和方差损失
+            mean_loss = nn.functional.mse_loss(pred_mean.unsqueeze(0), gt_mean.unsqueeze(0))
+            std_loss = nn.functional.mse_loss(pred_std.unsqueeze(0), gt_std.unsqueeze(0))
+
+            # 组合损失
+            loss = mean_loss + 0.5 * std_loss
+
+            # 只在第一帧记录日志，避免日志过多
+            if 'frame_idx' in frame_data and frame_data['frame_idx'] == 0 and is_main_process():
+                print(f"Point cloud SDF prediction: {sdf_pred.shape}, mean: {pred_mean:.3f}, std: {pred_std:.3f}")
+                print(f"TSDF ground truth: {tsdf_gt_raw.shape}, mean: {gt_mean:.3f}, std: {gt_std:.3f}")
+                print(f"Statistical loss: mean_loss={mean_loss:.4f}, std_loss={std_loss:.4f}")
+
+            return loss
+        else:
+            # 如果没有有效的TSDF值，使用占位损失
+            if is_main_process():
+                print("Warning: No valid TSDF ground truth, using placeholder loss")
+            return torch.tensor(0.1, device=sdf_pred.device, requires_grad=True)
+    else:
+        # 其他格式，尝试使用原始MSE
+        # 调整预测形状以匹配真值
+        tsdf_gt = tsdf_gt_raw.permute(0, 1, 4, 2, 3)  # [batch, 1, D, H, W]
+
+        if sdf_pred.shape != tsdf_gt.shape:
+            # 调整预测形状以匹配真值
+            sdf_pred = nn.functional.interpolate(
+                sdf_pred,
+                size=tsdf_gt.shape[2:],
+                mode='trilinear',
+                align_corners=False
+            )
+
+        # 计算MSE损失
+        return nn.functional.mse_loss(sdf_pred, tsdf_gt)
 
 
 def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
@@ -150,9 +224,9 @@ def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
 
     for batch_idx, batch in enumerate(dataloader):
         # 提取数据
-        images = batch['rgb_images']
-        poses = batch['poses']
-        intrinsics = batch['intrinsics']
+        images = batch['rgb_images']  # (batch, n_view, 3, H, W)
+        poses = batch['poses']          # (batch, n_view, 4, 4)
+        intrinsics = batch['intrinsics']  # (batch, n_view, 3, 3)
 
         # 移动到GPU
         device = torch.device('cuda')
@@ -166,11 +240,13 @@ def train_one_epoch(model, dataloader, optimizer, epoch, args, logger=None):
         # DDP会自动将model.forward_sequence调用分发到各个GPU
         # 需要访问model.module来调用forward_sequence
         try:
+            # forward_sequence内部会遍历所有帧
             outputs, states = model.module.forward_sequence(images, poses, intrinsics, reset_state=True)
 
             # 计算损失
             targets = batch.get('tsdf', None)
-            loss = compute_loss(outputs, targets)
+            frame_data = {'frame_idx': batch_idx}  # 传递帧索引用于日志
+            loss = compute_loss(outputs, targets, frame_data)
 
             # 梯度累积
             loss = loss / args.accumulation_steps
@@ -234,7 +310,8 @@ def validate(model, dataloader, args):
 
                 # 计算损失
                 targets = batch.get('tsdf', None)
-                loss = compute_loss(outputs, targets)
+                frame_data = {'frame_idx': batch_idx}
+                loss = compute_loss(outputs, targets, frame_data)
 
                 loss_meter.update(loss.item())
 
@@ -314,44 +391,81 @@ def main():
         start_epoch = checkpoint['epoch'] + 1
         best_loss = checkpoint.get('best_loss', float('inf'))
 
-    # 创建数据集和数据加载器（示例）
-    # 注意：这里需要根据您的实际数据集进行修改
+    # 创建数据集和数据加载器
     print_rank_0("创建数据集...")
 
-    # 示例数据集（需要替换为您的实际数据集）
-    class DummyDataset(torch.utils.data.Dataset):
-        def __init__(self, num_samples=100):
-            self.num_samples = num_samples
+    # 根据数据集可用性选择数据集
+    if DATASET_AVAILABLE:
+        print_rank_0(f"使用MultiSequenceTartanAirDataset")
+        print_rank_0(f"数据根目录: {args.data_path}")
+        print_rank_0(f"序列长度: {args.sequence_length}")
+        print_rank_0(f"最大序列数: {args.max_sequences}")
 
-        def __len__(self):
-            return self.num_samples
+        train_dataset = MultiSequenceTartanAirDataset(
+            data_root=args.data_path,
+            n_view=args.sequence_length,
+            max_sequences=args.max_sequences,
+            crop_size=tuple(args.crop_size),
+            voxel_size=args.voxel_size,
+            target_image_size=tuple(args.target_image_size),
+            max_depth=args.max_depth,
+            truncation_margin=args.truncation_margin,
+            augment=False,
+            shuffle=True
+        )
 
-        def __getitem__(self, idx):
-            H, W = 96, 128
-            n_view = 2
+        val_dataset = MultiSequenceTartanAirDataset(
+            data_root=args.data_path,
+            n_view=args.sequence_length,
+            max_sequences=max(1, args.max_sequences // 5),  # 验证集使用较少序列
+            crop_size=tuple(args.crop_size),
+            voxel_size=args.voxel_size,
+            target_image_size=tuple(args.target_image_size),
+            max_depth=args.max_depth,
+            truncation_margin=args.truncation_margin,
+            augment=False,
+            shuffle=False
+        )
+    else:
+        print_rank_0("Warning: MultiSequenceTartanAirDataset不可用，使用DummyDataset")
+        print_rank_0("请确保multi_sequence_tartanair_dataset.py存在且可导入")
 
-            return {
-                'rgb_images': torch.randn(n_view, 3, H, W),
-                'poses': torch.eye(4).unsqueeze(0).repeat(n_view, 1, 1),
-                'intrinsics': torch.eye(3).unsqueeze(0).repeat(n_view, 1, 1),
-                'tsdf': torch.randn(1, 128, 128, 128)  # 示例目标
-            }
+        # 回退到DummyDataset
+        class DummyDataset(torch.utils.data.Dataset):
+            def __init__(self, num_samples=100):
+                self.num_samples = num_samples
 
-    train_dataset = DummyDataset(num_samples=200)
-    val_dataset = DummyDataset(num_samples=50)
+            def __len__(self):
+                return self.num_samples
+
+            def __getitem__(self, idx):
+                H, W = 96, 128
+                n_view = 2
+
+                return {
+                    'rgb_images': torch.randn(n_view, 3, H, W),
+                    'poses': torch.eye(4).unsqueeze(0).repeat(n_view, 1, 1),
+                    'intrinsics': torch.eye(3).unsqueeze(0).repeat(n_view, 1, 1),
+                    'tsdf': torch.randn(1, 128, 128, 128)  # 示例目标
+                }
+
+        train_dataset = DummyDataset(num_samples=200)
+        val_dataset = DummyDataset(num_samples=50)
 
     train_loader, train_sampler = create_distributed_dataloader(
         train_dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        shuffle=True
+        shuffle=True,
+        collate_fn=MultiSequenceTartanAirDataset.collate_fn if DATASET_AVAILABLE and MultiSequenceTartanAirDataset is not None else None
     )
 
     val_loader, _ = create_distributed_dataloader(
         val_dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
-        shuffle=False
+        shuffle=False,
+        collate_fn=MultiSequenceTartanAirDataset.collate_fn if DATASET_AVAILABLE and MultiSequenceTartanAirDataset is not None else None
     )
 
     # 训练循环
