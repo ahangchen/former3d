@@ -27,7 +27,7 @@ from distributed_utils import (
     AverageMeter, adjust_learning_rate, print_rank_0,
     synchronize
 )
-from former3d.stream_sdfformer_integrated import StreamSDFFormerIntegrated
+from former3d.pose_aware_stream_sdfformer import PoseAwareStreamSdfFormer
 
 
 def parse_args():
@@ -65,7 +65,7 @@ def parse_args():
 
 def create_model(args):
     """创建模型"""
-    model = StreamSDFFormerIntegrated(
+    model = PoseAwareStreamSdfFormer(
         attn_heads=args.attn_heads,
         attn_layers=args.attn_layers,
         use_proj_occ=args.use_proj_occ,
