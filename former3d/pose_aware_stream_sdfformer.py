@@ -452,9 +452,15 @@ class PoseAwareStreamSdfFormer(SDFFormer):
         voxel_inds_16 = self._generate_voxel_inds(batch_size, device)
 
         # 3. 判断是否有历史信息
-        if self.historical_state is None:
-            # 第一帧：调用super().forward()
-            print("[forward_single_frame] 第一帧，调用super().forward()")
+        # 优化：训练模式下跳过融合以节省显存
+        use_fusion = not self.training and (self.historical_state is not None)
+
+        if self.historical_state is None or not use_fusion:
+            # 第一帧或训练模式：调用super().forward()
+            if self.historical_state is None:
+                print("[forward_single_frame] 第一帧，调用super().forward()")
+            else:
+                print("[forward_single_frame] 训练模式：跳过融合，调用super().forward()")
 
             result = super().forward(batch, voxel_inds_16, return_multiscale_features=False)
             if len(result) == 3:
@@ -465,9 +471,9 @@ class PoseAwareStreamSdfFormer(SDFFormer):
             # 构建输出
             output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
 
-        else:
-            # 有历史信息：执行融合
-            print("[forward_single_frame] 有历史信息，执行融合")
+        elif use_fusion:
+            # 推理模式且有历史信息：执行融合
+            print("[forward_single_frame] 推理模式：执行融合")
 
             # 1) 调用super().forward()获取当前帧特征
             result = super().forward(batch, voxel_inds_16, return_multiscale_features=False)

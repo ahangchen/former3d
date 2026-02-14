@@ -1,0 +1,28 @@
+## 使用Pose投影做当前特征和历史特征融合
+参考StreamSdfformerIntegrated类，新建一个新的流式融合类PoseAwareStreamSdfFormer，必须继承SDFFormer类，必须包含forward_sequence函数，forward_single_frame函数；
+
+接口定义：__init__，forward_single_frame，forward_sequence的入参和维度定义都应该跟StreamSdfformerIntegrated类一样；
+
+## 任务一：保留历史信息
+- 在StreamSdfformerIntegrated类中，__init__使用self.historical_state，self.historical_pose，self.historical_intrinsics, self.historical_3d_points来记录历史信息；
+- 在StreamSdfformerIntegrated类中，创建一个_record_state的类成员函数，在每次forward完成后，将当前的sparse的fine级别feature和sdf结果，保存到historical_state中，把当前帧的pose，保存到historical_pose中，把当前帧的内参，保存在historical_intrinsics中，把当前帧的feature和sdf对应的3d坐标，保存在historical_3d_points;
+
+## 任务二：历史信息投影
+- 在StreamSdfformerIntegrated类中，创建一个_historical_state_project函数中，使用当前帧的Pose和历史帧的Pose，计算相对位姿；
+- 根据相对位姿，计算历史3d点投影到当前帧视角下的3d位置，如果是超出当前帧的3d输出范围的点，则忽略这部分点的投影；
+- 根据历史3d点到当前帧的对应关系，使用gridsample搬运历史稀疏3d点到当前dense 3d空间中，得到对应的3d feature和sdf，也就是self.project_features和self.project_sdfs；
+
+## 任务三：历史信息和当前信息融合完整链路
+- 在StreamSdfformerIntegrated类中，在forward_single_frame中，如果self.historical_state为空，调用super（也就是SdfFormer）中forward函数，执行当前帧图像到3d空间的投影和多尺度3d卷积，注意，由于在forward_sequence中，我们已经将frame维度拆分，所以调用SdfFormer forward时，rgb_imgs的维度应该是[B, 1, 3, H, W]；
+- 如果有self.historical_state非空，调用_historical_state_project，将历史信息投影到当前帧；将self.project_features、self.project_sdfs与当前帧的dense fine 3d feature concat在一起，接两层3d卷积，得到与当前帧dense fine 3d feature一样shape的feature，赋值为为self.fusion_features；使用super（也就是SdfFormer）中的net_3d，处理self.fusion_features，得到融合后的sdf；
+- 调用_record_state，把当前帧的输出结果保存成历史信息，注意更新历史信息，不要有显存泄露
+
+## 任务四：替换流式训练中的模型
+- 在train_stream_ddp.py中，把StreamSDFFormerIntegrated相关的引用和调用替换成PoseAwareStreamSdfFormer；由于PoseAwareStreamSdfFormer的关键接口定义和StreamSDFFormerIntegrated一致，预期替换后不需要引入额外的适配；
+
+## 任务五：执行网络梯度流验证
+- 确保PoseAwareStreamSdfFormer中的各个组件梯度传递都是正常的，如果有梯度断开的情况，分析原因并修复
+
+## 任务六：执行完整流式训练验证
+- 在单机多卡环境执行train_stream_ddp.py，确认PoseAwareStreamSdfFormer的运行是否正常，如果有语法错误或执行错误，分析原因并修复；如果出现cuda OOM异常，分析各个组件的显存占用情况，给出优化建议
+
