@@ -111,10 +111,21 @@ def compute_loss(outputs, targets, **kwargs):
     # 根据您的具体需求修改
 
     # 示例：使用L1损失
-    loss = torch.tensor(0.0, device=outputs['sdf'].device)
+    loss = torch.tensor(0.0, device='cuda' if torch.cuda.is_available() else 'cpu')
 
     if 'sdf' in outputs and targets is not None:
-        loss = loss + torch.nn.functional.l1_loss(outputs['sdf'], targets)
+        sdf = outputs['sdf']
+        # 处理sparse SDF输出：如果sdf元素数量远大于targets的空间维度，进行mean处理
+        if sdf.shape[0] > 1000:  # sparse输出（元素数量很大）
+            # sparse SDF的mean损失
+            sdf_mean = sdf.mean()
+            target_mean = targets.mean() if targets.dim() > 0 else targets
+            loss = loss + torch.abs(sdf_mean - target_mean).mean()
+            print(f"[compute_loss] Sparse SDF: sdf.shape={sdf.shape}, targets.shape={targets.shape}, loss={loss.item()}")
+        else:
+            # dense输出，直接计算L1损失
+            loss = loss + torch.nn.functional.l1_loss(sdf, targets)
+            print(f"[compute_loss] Dense SDF: sdf.shape={sdf.shape}, targets.shape={targets.shape}, loss={loss.item()}")
 
     return loss
 
