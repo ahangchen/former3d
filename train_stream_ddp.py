@@ -111,7 +111,7 @@ def compute_loss(outputs, targets, **kwargs):
     # 根据您的具体需求修改
 
     # 示例：使用L1损失
-    loss = torch.tensor(0.0, device='cuda' if torch.cuda.is_available() else 'cpu')
+    loss = torch.tensor(0.0, device=device)
 
     if 'sdf' in outputs and targets is not None:
         sdf = outputs['sdf']
