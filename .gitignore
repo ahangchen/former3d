@@ -2,6 +2,10 @@
 *.log
 *.log.*
 
+# Test result files (should be in test_results/)
+test_*.json
+test_*.log
+
 # Checkpoints and model files
 *checkpoints/
 working_checkpoints/
