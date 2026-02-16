@@ -74,9 +74,8 @@ class Former3D(nn.Module):
                     x_normalized = x_normalized * self.weight + self.bias
                 return x_normalized
         
-        # 使用InstanceNorm3d代替BatchNorm3d，避免batch size限制
-        # InstanceNorm在每个样本的channel维度上归一化，不依赖batch size
-        BatchNorm3d = nn.InstanceNorm3d
+        # 使用PyTorch的BatchNorm3d
+        BatchNorm3d = nn.BatchNorm3d
         if self.sync_bn == True:
             BatchNorm1d = autocast_norm(change_default_args(eps=1e-3, momentum=0.01)(LayerNorm1d))
         else:
