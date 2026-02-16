@@ -160,7 +160,8 @@ class SDFFormer(torch.nn.Module):
 
             voxel_features = torch.cat((voxel_features, bp_feats, voxel_logits), dim=-1)
 
-            hash_size = 20*n_subsample[resname] if resname in n_subsample else n_subsample['fine']
+            # 使用固定的hash_size=400000，避免稀疏卷积时的内存溢出
+            hash_size = 400000
             voxel_dim = (voxel_dim_16*(self.resolutions['coarse']/res)).int().tolist()
             voxel_features = spconv.SparseConvTensor(voxel_features, xyzb2bxyz(voxel_inds), voxel_dim, batch_size)
             voxel_features = self.net3d[resname](voxel_features, voxel_dim, res, hash_size=hash_size)
