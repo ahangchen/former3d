@@ -149,7 +149,7 @@ class Former3D(nn.Module):
             for i in range(len(self.pool_scales)):
                 self.global_convs.append(nn.Conv3d(channels[-1], channels[-1], kernel_size=1))
             self.global_norm = nn.Sequential(
-                    BatchNorm3d(channels[-1]*len(self.pool_scales)),
+                    BatchNorm3d(channels[-1]*len(self.pool_scales), track_running_stats=False),
                     nn.ReLU(True))
 
         if self.global_tf == True:
