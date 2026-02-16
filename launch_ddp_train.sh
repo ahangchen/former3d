@@ -14,6 +14,13 @@ NUM_GPUS=${1:-2}  # 默认使用2个GPU
 PORT=${2:-29500}  # 默认端口
 EXTRA_ARGS="${@:3}"  # 额外的参数传递给训练脚本
 
+# 如果第一个参数是--开头，说明没有指定GPU数量，使用默认值
+if [[ "$1" == --* ]]; then
+    NUM_GPUS=2
+    PORT=29500
+    EXTRA_ARGS="$@"
+fi
+
 echo "参数:"
 echo "  - GPU数量: $NUM_GPUS"
 echo "  - 端口: $PORT"
