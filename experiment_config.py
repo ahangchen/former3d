@@ -175,11 +175,11 @@ def save_experiment_config(args: Any, experiment_dir: str, model_name: str = "St
 ```bash
 python train_stream_integrated.py \\
     --enable-rerun-viz \\
-    --data-root {args.data_root} \\
+    --data-path {getattr(args, 'data_path', getattr(args, 'data_root', '/path/to/data'))} \\
     --batch-size {args.batch_size} \\
     --learning-rate {args.learning_rate} \\
     --epochs {args.epochs} \\
-    --sequence-length {args.sequence_length}
+    --sequence-length {getattr(args, 'sequence_length', 'N/A')}
 ```
 
 ### 查看可视化
