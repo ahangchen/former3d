@@ -58,6 +58,16 @@ except ImportError as e:
     RERUN_VIZ_AVAILABLE = False
     RerunVisualizer = None
 
+# 导入实验配置管理
+try:
+    from experiment_config import create_experiment_directory
+    EXPERIMENT_CONFIG_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Unable to import experiment_config: {e}")
+    print("Will use default directory structure")
+    EXPERIMENT_CONFIG_AVAILABLE = False
+    create_experiment_directory = None
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description='DDP流式3D重建训练')
@@ -89,14 +99,13 @@ def parse_args():
     parser.add_argument('--truncation-margin', type=float, default=0.2, help='TSDF截断边界')
 
     # 其他参数
-    parser.add_argument('--save-dir', type=str, default='./checkpoints/ddp', help='保存目录')
-    parser.add_argument('--save-frequency', type=int, default=5, help='保存频率（epoch）')
+    parser.add_argument('--log-dir', type=str, default='logs', help='日志基础目录（实验目录将创建在此下）')
+    parser.add_argument('--save-frequency', type=int, default=1, help='checkpoint保存频率（每个epoch都保存）')
     parser.add_argument('--resume', type=str, default='', help='恢复训练的检查点路径')
     parser.add_argument('--seed', type=int, default=42, help='随机种子')
 
     # Rerun可视化参数
     parser.add_argument('--enable-rerun-viz', action='store_true', help='启用Rerun可视化')
-    parser.add_argument('--rerun-viz-dir', type=str, default='viz', help='Rerun可视化输出目录')
     parser.add_argument('--rerun-viz-freq', type=int, default=1, help='可视化频率（每N个epoch记录一次）')
 
     return parser.parse_args()
@@ -461,17 +470,38 @@ def main():
     print_rank_0(f"  - 每GPU batch size: {args.batch_size // get_world_size()}")
     print_rank_0(f"  - Epochs: {args.epochs}")
     print_rank_0(f"  - 基础学习率: {args.learning_rate}")
-    print_rank_0(f"  - 保存目录: {args.save_dir}")
+    print_rank_0(f"  - 日志基础目录: {args.log_dir}")
     print_rank_0("="*60)
 
-    # 创建保存目录
-    if is_main_process():
-        os.makedirs(args.save_dir, exist_ok=True)
+    # 创建实验目录结构
+    experiment_paths = None
+    if is_main_process() and EXPERIMENT_CONFIG_AVAILABLE:
+        print_rank_0("创建实验目录...")
+        experiment_paths = create_experiment_directory(
+            base_dir=args.log_dir,
+            args=args,
+            model_name="PoseAwareStreamSdfFormerSparse-DDP"
+        )
+        print_rank_0(f"实验目录: {experiment_paths['experiment_dir']}")
+        print_rank_0(f"配置文件: {experiment_paths['config_file']}")
+        print_rank_0(f"检查点目录: {experiment_paths['checkpoint_dir']}")
+    elif is_main_process():
+        # 回退到旧的目录结构
+        save_dir = os.path.join(args.log_dir, 'ddp_default')
+        os.makedirs(save_dir, exist_ok=True)
+        checkpoint_dir = os.path.join(save_dir, 'checkpoints')
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        experiment_paths = {
+            'experiment_dir': save_dir,
+            'checkpoint_dir': checkpoint_dir,
+            'rrd_file': os.path.join(save_dir, 'training.rrd')
+        }
+        print_rank_0(f"使用默认目录结构: {save_dir}")
 
     # 创建TensorBoard logger
     logger = None
-    if is_main_process() and TENSORBOARD_AVAILABLE:
-        log_dir = os.path.join(args.save_dir, 'logs')
+    if is_main_process() and TENSORBOARD_AVAILABLE and experiment_paths:
+        log_dir = os.path.join(experiment_paths['experiment_dir'], 'tensorboard')
         os.makedirs(log_dir, exist_ok=True)
         logger = SummaryWriter(log_dir)
         print_rank_0(f"TensorBoard日志将保存到: {log_dir}")
@@ -585,19 +615,19 @@ def main():
 
     # 创建Rerun可视化器
     visualizer = None
-    if is_main_process() and RERUN_VIZ_AVAILABLE and args.enable_rerun_viz:
+    if is_main_process() and RERUN_VIZ_AVAILABLE and args.enable_rerun_viz and experiment_paths:
         print_rank_0(f"✅ 启用Rerun可视化")
         print_rank_0(f"ℹ️  使用全局模式：所有epoch数据保存到单个文件")
 
-        # 创建可视化目录
-        viz_dir = os.path.join(args.save_dir, args.rerun_viz_dir)
-        os.makedirs(viz_dir, exist_ok=True)
+        # 使用实验目录作为可视化输出目录
+        viz_dir = experiment_paths['experiment_dir']
 
         # 初始化可视化器
         visualizer = RerunVisualizer(save_dir=viz_dir, global_mode=True)
         # 在训练开始前初始化recording（全局模式只需要初始化一次）
         visualizer.start_recording()
         print_rank_0(f"可视化输出目录: {viz_dir}")
+        print_rank_0(f"Rerun文件: {experiment_paths['rrd_file']}")
     elif is_main_process() and args.enable_rerun_viz and not RERUN_VIZ_AVAILABLE:
         print_rank_0("⚠️ 请求启用Rerun可视化，但RerunVisualizer不可用")
         print_rank_0("⚠️ 请检查rerun_visualizer.py是否存在且可以导入")
@@ -661,22 +691,44 @@ def main():
                 import traceback
                 traceback.print_exc()
 
-        # 保存检查点
-        if (epoch + 1) % args.save_frequency == 0 or val_loss < best_loss:
+        # 保存检查点（每个epoch都保存）
+        if experiment_paths:
+            checkpoint_dir = experiment_paths['checkpoint_dir']
+            # 每个epoch都保存checkpoint
+            checkpoint_path = os.path.join(checkpoint_dir, f'model_epoch_{epoch+1:03d}.pth')
+
+            # 如果是最佳模型，额外保存一份
             if val_loss < best_loss:
                 best_loss = val_loss
-                checkpoint_path = os.path.join(args.save_dir, 'best_model.pth')
+                best_checkpoint_path = os.path.join(experiment_paths['experiment_dir'], 'best_model.pth')
             else:
-                checkpoint_path = os.path.join(args.save_dir, f'checkpoint_epoch{epoch+1}.pth')
+                best_checkpoint_path = None
 
             if is_main_process():
+                # 保存当前epoch checkpoint
                 save_on_master({
                     'epoch': epoch,
                     'model': model.module.state_dict(),
                     'optimizer': optimizer.state_dict(),
                     'best_loss': best_loss,
+                    'val_loss': val_loss,
+                    'train_loss': train_loss,
                     'args': args
                 }, checkpoint_path)
+                print_rank_0(f"✅ Checkpoint已保存: {checkpoint_path}")
+
+                # 如果是最佳模型，额外保存
+                if best_checkpoint_path:
+                    save_on_master({
+                        'epoch': epoch,
+                        'model': model.module.state_dict(),
+                        'optimizer': optimizer.state_dict(),
+                        'best_loss': best_loss,
+                        'val_loss': val_loss,
+                        'train_loss': train_loss,
+                        'args': args
+                    }, best_checkpoint_path)
+                    print_rank_0(f"🏆 最佳模型已保存: {best_checkpoint_path}")
 
     # 完成训练
     print_rank_0("\n" + "="*60)
