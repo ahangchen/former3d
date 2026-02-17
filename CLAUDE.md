@@ -16,8 +16,5 @@ Programming Guidelines
     - Finally, commit the clean state with `git commit` again
 11. **Required:** Place all test results, test logs in the `test_results` directory;
 12. **Required:** Place all test reports in the `test_reports` directory;
-
-## Memory Management and Training Configuration
-
-13. **Batch Size Guidelines**:
-    - **Batch Size 2 (Multi-GPU)**: Recommended when sufficient GPU memory is available (>8GB per GPU). Requires larger crop_size and proper voxel_size settings.
+13. **Forbidden**: Use batch size 1 for any training, validation or test;
+14. **Required**: Place all auxiliary tool code (such as training monitoring, resource monitoring) and scripts in the utils directory.
