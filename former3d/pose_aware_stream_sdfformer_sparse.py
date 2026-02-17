@@ -256,7 +256,7 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
         hist_grid = hist_grid.repeat(batch_size, 1, 1, 1, 1, 1)  # [B, 1, D, H, W, 3]
         cur_grid = cur_grid.repeat(batch_size, 1, 1, 1, 1, 1)  # [B, 1, D, H, W, 3]
 
-        # 步骤4: 使用相对位姿变换历史grid到当前帧
+        # 步骤4: 使用相对位姿变换历史grid到当前帧（批量处理，避免for循环）
         # 提取相对位姿的旋转和平移
         rot = relative_pose[:, :3, :3]  # [B, 3, 3]
         trans = relative_pose[:, :3, 3]  # [B, 3]
@@ -264,22 +264,17 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
         # 重构grid为[B, 1, D*H*W, 3]用于变换
         hist_grid_flat = hist_grid.view(batch_size, 1, -1, 3)  # [B, 1, D*H*W, 3]
 
-        # 应用旋转
+        # 批量应用旋转（避免低效的for循环）
         # hist_grid_flat: [B, 1, N, 3], rot: [B, 3, 3]
-        # 对每个batch应用旋转
-        transformed_grid_list = []
-        for b in range(batch_size):
-            rot_b = rot[b:b+1]  # [1, 3, 3]
-            grid_b = hist_grid_flat[b:b+1]  # [1, 1, N, 3]
-            # 应用旋转: R @ p
-            transformed = torch.matmul(rot_b.unsqueeze(1), grid_b.permute(0, 1, 3, 2))  # [1, 1, 3, N]
-            transformed = transformed.permute(0, 1, 3, 2)  # [1, 1, N, 3]
-            transformed_grid_list.append(transformed)
-
-        transformed_grid = torch.cat(transformed_grid_list, dim=0)  # [B, 1, D*H*W, 3]
+        # 转置grid为[B, 1, 3, N]以便矩阵乘法
+        hist_grid_flat_transposed = hist_grid_flat.permute(0, 1, 3, 2)  # [B, 1, 3, N]
+        # 批量矩阵乘法: [B, 1, 3, 3] @ [B, 1, 3, N] = [B, 1, 3, N]
+        transformed = torch.matmul(rot.unsqueeze(1), hist_grid_flat_transposed)  # [B, 1, 3, N]
+        # 转回[B, 1, N, 3]
+        transformed_grid = transformed.permute(0, 1, 3, 2)  # [B, 1, N, 3]
         transformed_grid = transformed_grid.view(batch_size, 1, D_hist, H_hist, W_hist, 3)  # [B, 1, D, H, W, 3]
 
-        print(f"[_historical_state_project] 历史grid变换完成")
+        print(f"[_historical_state_project] 历史grid变换完成（批量处理）")
 
         # 步骤5: 使用grid_sample从历史dense volume采样到当前grid
         # 准备输入：历史dense volume [B, C, D, H, W]格式
