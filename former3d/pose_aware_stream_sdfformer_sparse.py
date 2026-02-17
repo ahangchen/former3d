@@ -652,11 +652,18 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             else:
                 raise RuntimeError(f"Unexpected result length: {len(result)}")
 
-            # 2) 提取当前帧fine级别的稀疏特征
-            current_fine_sparse = voxel_outputs['fine']  # SparseConvTensor
-            current_features = current_fine_sparse.features  # [N, 1]
-            current_indices = current_fine_sparse.indices  # [N, 4] (b, x, y, z)
-            current_spatial_shape = current_fine_sparse.spatial_shape  # (D, H, W)
+            # 2) 提取当前帧fine级别的稀疏特征（从multiscale_features）
+            # 注意：voxel_outputs['fine']是SDF（1维），真正的特征在multiscale_features中
+            if 'fine' in multiscale_features:
+                current_fine_data = multiscale_features['fine']
+                current_fine_sparse = current_fine_data['features']  # SparseConvTensor（真正的特征）
+                current_features = current_fine_sparse.features  # [N, C] 真正的特征
+                current_indices = current_fine_sparse.indices  # [N, 4] (b, x, y, z)
+                current_spatial_shape = current_fine_sparse.spatial_shape  # (D, H, W)
+
+                print(f"[forward_single_frame] 当前帧fine特征: {current_features.shape}")
+            else:
+                raise RuntimeError("multiscale_features中没有fine级别特征")
 
             # 3) 投影历史信息（Dense版本，严格按照任务二要求）
             # 调用_historical_state_project获取dense volume的投影特征和SDF
@@ -682,10 +689,11 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             print(f"[forward_single_frame] 从dense volume采样稀疏SDF: {projected_sdfs.shape}")
 
             # 5) 稀疏融合：concat + MLP
+            # 融合历史特征、当前特征、历史SDF
             # 动态创建或更新融合网络（适应不同特征维度）
             hist_feat_dim = projected_features.shape[1]  # 历史特征维度
-            current_feat_dim = current_features.shape[1]  # 当前特征维度（通常是1）
-            fusion_input_dim = hist_feat_dim + current_feat_dim + 1  # +1 for SDF
+            current_feat_dim = current_features.shape[1]  # 当前特征维度（不一定是1）
+            fusion_input_dim = hist_feat_dim + current_feat_dim + 1  # +1 for 历史SDF
             fusion_output_dim = current_feat_dim  # 输出维度与当前特征维度一致
 
             if self.sparse_fusion is None or self.sparse_fusion[0].in_features != fusion_input_dim:
@@ -708,14 +716,20 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             # 通过MLP融合
             fused_features = self.sparse_fusion(concat_features)  # [N, fusion_output_dim]
 
-            # 6) 更新voxel_outputs（直接修改SparseConvTensor的特征）
+            # 6) 更新multiscale_features中的特征（保持与历史状态格式一致）
             from spconv.pytorch import SparseConvTensor
-            voxel_outputs['fine'] = SparseConvTensor(
+            fused_fine_sparse = SparseConvTensor(
                 features=fused_features,
                 indices=current_indices,
-                spatial_shape=current_fine_sparse.spatial_shape,
+                spatial_shape=current_spatial_shape,
                 batch_size=batch_size
             )
+            multiscale_features['fine']['features'] = fused_fine_sparse
+
+            # 同时更新voxel_outputs中的SDF（保持原有的SDF，或者可以添加一个映射层）
+            # 注意：这里保持voxel_outputs['fine']不变，因为它应该是SDF输出
+            # 如果需要从融合特征生成新的SDF，可以添加一个线性层
+            # 目前保持原有SDF不变
 
             # 7) 构建输出
             output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
