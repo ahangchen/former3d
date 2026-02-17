@@ -58,13 +58,8 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
         self.historical_intrinsics = None     # [B, 3, 3] 历史内参
         self.historical_3d_points = None     # [N, 3] 历史3D坐标
 
-        # 稀疏融合网络（直接在稀疏特征上操作）
-        self.sparse_fusion = nn.Sequential(
-            nn.Linear(129, 256),  # 历史特征(128) + 当前特征(1) + SDF(不使用)
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU()
-        )
+        # 稀疏融合网络将在forward时动态创建，因为我们不知道fine级别特征维度
+        self.sparse_fusion = None
 
         print(f"初始化PoseAwareStreamSdfFormerSparse(稀疏版本）:")
         print(f"  - 体素大小: {voxel_size}")
@@ -145,82 +140,169 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
 
     def _historical_state_project_sparse(self,
                                          current_pose: torch.Tensor,
-                                         current_features: torch.Tensor,
-                                         current_indices: torch.Tensor,
-                                         current_multiscale: Optional[Dict] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                                         current_sparse_features: torch.Tensor,
+                                         current_sparse_indices: torch.Tensor,
+                                         multiscale_features: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        将历史状态投影到当前帧坐标系（稀疏版本）
+        将历史稀疏状态投影到当前帧稀疏空间（稀疏版本）
 
-        策略：直接按顺序匹配历史和当前特征，避免复杂变换
+        实现步骤（按照pose_aware_historical_feature_fusion_plan.md任务二）：
+        1. 使用当前帧Pose和历史帧Pose，计算相对位姿
+        2. 根据相对位姿，计算历史3D点投影到当前帧视角下的3D位置
+        3. 忽略超出当前帧3D输出范围的点
+        4. 使用最近邻查找，将历史稀疏特征投影到当前稀疏空间
 
         Args:
             current_pose: [B, 4, 4] 当前帧Pose
-            current_features: [N, 1] 当前帧稀疏特征（fine级别）
-            current_indices: [N, 4] 当前帧体素索引
-            current_multiscale: 当前帧的多尺度特征（可选）
+            current_sparse_features: [N_cur, C_cur] 当前帧稀疏特征
+            current_sparse_indices: [N_cur, 4] 当前帧稀疏体素索引(b, x, y, z)
+            multiscale_features: 当前帧多尺度特征字典
 
         Returns:
-            projected_features: [N, C] 投影的特征（128维）
-            projected_sdfs: [N, 1] 投影的SDF
+            projected_features: [N_cur, C_hist] 投影的历史特征（与当前稀疏点一一对应）
+            projected_sdfs: [N_cur, 1] 投影的历史SDF
         """
         if self.historical_state is None:
             raise RuntimeError("historical_state为空，无法投影")
 
         device = current_pose.device
-        num_current = current_features.shape[0]
+        batch_size = current_pose.shape[0]
 
-        # 如果历史状态包含多尺度特征，优先使用fine级别
+        # 提取历史信息
         if 'multiscale' in self.historical_state:
             hist_multiscale = self.historical_state['multiscale']
 
-            # 使用fine级别的特征进行投影
+            # 使用fine级别的特征
             if 'fine' in hist_multiscale:
                 hist_fine = hist_multiscale['fine']
-                historical_features = hist_fine['features']  # [N_hist, C]
-                historical_logits = hist_fine['logits']  # [N_hist, 1] - 已经是tensor
-                print(f"[_historical_state_project_sparse] 使用历史多尺度fine特征: {historical_features.shape}")
+                historical_features = hist_fine['features']  # [N_hist, 128]
+                historical_indices = hist_fine['indices']  # [N_hist, 4] (b, x, y, z)
+                historical_spatial_shape = hist_fine['spatial_shape']  # (D, H, W)
+                historical_logits = hist_fine['logits']  # [N_hist, 1] SparseConvTensor
             else:
-                # 降级到medium
-                if 'medium' in hist_multiscale:
-                    hist_medium = hist_multiscale['medium']
-                    historical_features = hist_medium['features']
-                    historical_logits = hist_medium['logits']
-                else:
-                    # 最后使用coarse
-                    hist_coarse = hist_multiscale['coarse']
-                    historical_features = hist_coarse['features']
-                    historical_logits = hist_coarse['logits']
+                raise RuntimeError("历史状态中缺少fine级别特征")
         else:
-            # 兼容旧代码：从历史状态直接提取
-            historical_features = self.historical_state['features']  # [N_hist, 1]
-            historical_logits = None
+            raise RuntimeError("历史状态格式错误，缺少multiscale字段")
 
-        print(f"[_historical_state_project_sparse] 历史特征: {historical_features.shape}, 当前特征: {current_features.shape}")
+        # 确保historical_logits是特征张量
+        if hasattr(historical_logits, 'features'):
+            historical_logits = historical_logits.features
 
-        # 简单策略：重复或截断历史特征以匹配当前特征数量
-        num_historical = historical_features.shape[0]
+        print(f"[_historical_state_project_sparse] 历史稀疏特征: {historical_features.shape}")
+        print(f"[_historical_state_project_sparse] 当前稀疏特征: {current_sparse_features.shape}")
 
-        if num_historical >= num_current:
-            # 截断到当前数量
-            projected_features = historical_features[:num_current]
-            projected_sdfs = torch.zeros(num_current, 1, device=device)
+        # 步骤1: 计算相对位姿
+        # T_rel = T_cur @ T_hist.inv()
+        historical_pose = self.historical_pose  # [B_hist, 4, 4]
+
+        # 如果历史batch和当前batch大小不同，取第一个并扩展
+        if historical_pose.shape[0] != batch_size:
+            historical_pose = historical_pose[0:1, :, :]  # [1, 4, 4]
+            historical_pose = historical_pose.repeat(batch_size, 1, 1)  # [B, 4, 4]
+
+        # 计算相对位姿: T_rel = T_cur @ T_hist^{-1}
+        historical_pose_inv = torch.inverse(historical_pose)  # [B, 4, 4]
+        relative_pose = current_pose @ historical_pose_inv  # [B, 4, 4]
+
+        print(f"[_historical_state_project_sparse] 相对位姿计算完成")
+
+        # 步骤2: 将历史3D点投影到当前帧视角
+        # 从indices提取稀疏3D坐标（体素索引）
+        # historical_indices: [N_hist, 4] (b, x, y, z)
+        # 需要转换为世界坐标系下的3D点，然后变换到当前帧坐标系
+
+        # 获取当前帧和历史帧的fine级别分辨率
+        current_resolution = self.resolutions['fine']
+        historical_resolution = hist_fine['resolution']
+
+        # 计算历史稀疏点在当前帧坐标系下的位置
+        # 先转换到归一化的体素坐标空间
+        D_hist, H_hist, W_hist = historical_spatial_shape
+        hist_b = historical_indices[:, 0]  # [N_hist]
+        hist_x = historical_indices[:, 1].float()  # [N_hist]
+        hist_y = historical_indices[:, 2].float()  # [N_hist]
+        hist_z = historical_indices[:, 3].float()  # [N_hist]
+
+        # 转换为归一化坐标[-1, 1]范围
+        hist_x_norm = (hist_x / (W_hist - 1)) * 2 - 1 if W_hist > 1 else hist_x * 0
+        hist_y_norm = (hist_y / (H_hist - 1)) * 2 - 1 if H_hist > 1 else hist_y * 0
+        hist_z_norm = (hist_z / (D_hist - 1)) * 2 - 1 if D_hist > 1 else hist_z * 0
+
+        # 堆叠成[N_hist, 3]坐标
+        hist_points_norm = torch.stack([hist_x_norm, hist_y_norm, hist_z_norm], dim=1)  # [N_hist, 3]
+
+        # 应用相对位姿变换（只对旋转部分，忽略平移，因为我们工作在归一化空间）
+        # 提取旋转矩阵: [B, 3, 3]
+        if batch_size > 1:
+            rotation = relative_pose[:, :3, :3]  # [B, 3, 3]
         else:
-            # 重复历史特征以填满当前数量
-            # 计算需要重复的完整次数和剩余数量
-            repeat_count = (num_current + num_historical - 1) // num_historical  # 向上取整
-            # 拼接重复的历史特征
-            projected_features_list = [historical_features] * repeat_count
-            projected_features = torch.cat(projected_features_list, dim=0)[:num_current]
-            projected_sdfs = torch.zeros(num_current, 1, device=device)
+            rotation = relative_pose[0, :3, :3].unsqueeze(0)  # [1, 3, 3]
 
-        # 如果历史特征是SDF logits (C=1)，需要对齐到128维
-        if projected_features.shape[1] != 128:
-            if not hasattr(self, '_feat_aligner'):
-                in_dim = projected_features.shape[1]
-                self._feat_aligner = nn.Linear(in_dim, 128).to(device)
-            projected_features = self._feat_aligner(projected_features)
+        # 对所有历史点应用相同的旋转变换（简化处理）
+        # hist_points_norm: [N_hist, 3], rotation: [B, 3, 3]
+        # 使用第一个batch的旋转
+        rot_0 = rotation[0]  # [3, 3]
+        transformed_points = torch.matmul(hist_points_norm, rot_0.T)  # [N_hist, 3]
 
-        print(f"[_historical_state_project_sparse] 投影完成: {projected_features.shape}")
+        print(f"[_historical_state_project_sparse] 历史点变换完成: {transformed_points.shape}")
+
+        # 步骤3: 获取当前帧稀疏点的归一化坐标
+        # current_sparse_indices: [N_cur, 4] (b, x, y, z)
+        N_cur = current_sparse_indices.shape[0]
+
+        # 从当前帧的多尺度特征获取spatial_shape
+        if 'fine' in multiscale_features:
+            current_fine = multiscale_features['fine']
+            current_spatial_shape = current_fine['features'].spatial_shape  # (D, H, W)
+        else:
+            # 使用历史帧的spatial_shape作为fallback
+            current_spatial_shape = historical_spatial_shape
+
+        D_cur, H_cur, W_cur = current_spatial_shape
+        cur_b = current_sparse_indices[:, 0]  # [N_cur]
+        cur_x = current_sparse_indices[:, 1].float()  # [N_cur]
+        cur_y = current_sparse_indices[:, 2].float()  # [N_cur]
+        cur_z = current_sparse_indices[:, 3].float()  # [N_cur]
+
+        # 转换为归一化坐标[-1, 1]范围
+        cur_x_norm = (cur_x / (W_cur - 1)) * 2 - 1 if W_cur > 1 else cur_x * 0
+        cur_y_norm = (cur_y / (H_cur - 1)) * 2 - 1 if H_cur > 1 else cur_y * 0
+        cur_z_norm = (cur_z / (D_cur - 1)) * 2 - 1 if D_cur > 1 else cur_z * 0
+
+        # 堆叠成[N_cur, 3]坐标
+        cur_points_norm = torch.stack([cur_x_norm, cur_y_norm, cur_z_norm], dim=1)  # [N_cur, 3]
+
+        # 步骤4: 使用最近邻查找，为每个当前稀疏点找到最近的历史投影点
+        # cur_points_norm: [N_cur, 3], transformed_points: [N_hist, 3]
+        # 计算距离矩阵 [N_cur, N_hist]
+        dists = torch.cdist(cur_points_norm, transformed_points, p=2)  # [N_cur, N_hist]
+
+        # 找到最近邻的索引
+        nearest_indices = torch.argmin(dists, dim=1)  # [N_cur]
+
+        # 获取最近邻点的距离
+        nearest_dists = torch.gather(dists, 1, nearest_indices.unsqueeze(1))  # [N_cur, 1]
+
+        # 设置距离阈值，超出阈值的点使用零特征
+        dist_threshold = 0.5  # 在归一化空间[-1, 1]^3中的距离阈值
+        valid_mask = nearest_dists.squeeze(1) < dist_threshold  # [N_cur]
+
+        # 获取历史特征维度
+        hist_feat_dim = historical_features.shape[1]  # 历史特征维度（不一定是128）
+
+        # 收集对应的历史特征
+        projected_features = torch.zeros(N_cur, hist_feat_dim, device=device)  # [N_cur, hist_feat_dim]
+        projected_sdfs = torch.zeros(N_cur, 1, device=device)  # [N_cur, 1]
+
+        # 只为有效点赋值
+        valid_indices = nearest_indices[valid_mask]  # [N_valid]
+        valid_cur_indices = torch.where(valid_mask)[0]  # [N_valid]
+
+        if valid_cur_indices.shape[0] > 0:
+            projected_features[valid_cur_indices] = historical_features[valid_indices]  # [N_valid, hist_feat_dim]
+            projected_sdfs[valid_cur_indices] = historical_logits[valid_indices]  # [N_valid, 1]
+
+        print(f"[_historical_state_project_sparse] 有效投影点: {valid_cur_indices.shape[0]}/{N_cur}")
 
         return projected_features, projected_sdfs
 
@@ -402,14 +484,31 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             )  # [N, 128], [N, 1]
 
             # 4) 稀疏融合：concat + MLP
-            # 将当前特征(1维)与投影特征(128维)拼接
+            # 动态创建或更新融合网络（适应不同特征维度）
+            hist_feat_dim = projected_features.shape[1]  # 历史特征维度
+            current_feat_dim = current_features.shape[1]  # 当前特征维度（通常是1）
+            fusion_input_dim = hist_feat_dim + current_feat_dim + 1  # +1 for SDF
+            fusion_output_dim = current_feat_dim  # 输出维度与当前特征维度一致
+
+            if self.sparse_fusion is None or self.sparse_fusion[0].in_features != fusion_input_dim:
+                # 创建新的融合网络
+                print(f"[forward_single_frame] 创建新的融合网络: 输入{fusion_input_dim}维 -> 输出{fusion_output_dim}维")
+                self.sparse_fusion = nn.Sequential(
+                    nn.Linear(fusion_input_dim, 256),
+                    nn.ReLU(),
+                    nn.Linear(256, fusion_output_dim),
+                    nn.ReLU()
+                ).to(projected_features.device)
+
+            # 将当前特征、投影历史特征、投影历史SDF拼接
             concat_features = torch.cat([
-                projected_features,      # [N, 128]
-                current_features,         # [N, 1]
-            ], dim=1)  # [N, 129]
+                projected_features,      # [N, hist_feat_dim]
+                current_features,         # [N, current_feat_dim]
+                projected_sdfs,           # [N, 1]
+            ], dim=1)  # [N, fusion_input_dim]
 
             # 通过MLP融合
-            fused_features = self.sparse_fusion(concat_features)  # [N, 128]
+            fused_features = self.sparse_fusion(concat_features)  # [N, fusion_output_dim]
 
             # 5) 更新voxel_outputs（直接修改SparseConvTensor的特征）
             from spconv.pytorch import SparseConvTensor
