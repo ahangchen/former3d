@@ -138,6 +138,188 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             self.historical_intrinsics = current_intrinsics.detach().clone()
         self.historical_3d_points = current_3d_points.detach().clone()
 
+    def _historical_state_project(self,
+                                  current_pose: torch.Tensor,
+                                  current_spatial_shape: Tuple[int, int, int]) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        将历史状态投影到当前帧坐标系（Dense版本，严格按任务二要求）
+
+        实现步骤（按照pose_aware_historical_feature_fusion_plan.md任务二）：
+        1. 使用当前帧Pose和历史帧Pose，计算相对位姿
+        2. 根据相对位姿，计算历史3D点投影到当前帧视角下的3D位置
+        3. 忽略超出当前帧3D输出范围的点
+        4. 使用grid_sample搬运历史稀疏3D点到当前dense 3D空间
+
+        Args:
+            current_pose: [B, 4, 4] 当前帧Pose
+            current_spatial_shape: (D, H, W) 当前帧dense空间形状
+
+        Returns:
+            projected_features: [D, H, W, C] 投影的历史特征（dense 3D space）
+            projected_sdfs: [D, H, W, 1] 投影的历史SDF（dense 3D space）
+        """
+        if self.historical_state is None:
+            raise RuntimeError("historical_state为空，无法投影")
+
+        device = current_pose.device
+        batch_size = current_pose.shape[0]
+
+        # 提取历史信息（使用_record_state记录的完整状态）
+        if 'multiscale' in self.historical_state:
+            hist_multiscale = self.historical_state['multiscale']
+
+            # 使用fine级别的特征
+            if 'fine' in hist_multiscale:
+                hist_fine = hist_multiscale['fine']
+                historical_features = hist_fine['features']  # [N_hist, C]
+                historical_indices = hist_fine['indices']  # [N_hist, 4] (b, x, y, z)
+                historical_spatial_shape = hist_fine['spatial_shape']  # (D, H, W)
+                historical_logits = hist_fine['logits']  # [N_hist, 1] 或SparseConvTensor
+
+                # 处理historical_logits（可能是SparseConvTensor或tensor）
+                if hasattr(historical_logits, 'features'):
+                    historical_logits = historical_logits.features  # [N_hist, 1]
+            else:
+                raise RuntimeError("历史状态中缺少fine级别特征")
+        else:
+            raise RuntimeError("历史状态格式错误，缺少multiscale字段")
+
+        print(f"[_historical_state_project] 历史稀疏特征: {historical_features.shape}")
+        print(f"[_historical_state_project] 历史稀疏logits: {historical_logits.shape}")
+        print(f"[_historical_state_project] 历史spatial_shape: {historical_spatial_shape}")
+        print(f"[_historical_state_project] 当前spatial_shape: {current_spatial_shape}")
+
+        # 步骤1: 计算相对位姿
+        historical_pose = self.historical_pose  # [B_hist, 4, 4]
+
+        # 如果历史batch和当前batch大小不同，取第一个并扩展
+        if historical_pose.shape[0] != batch_size:
+            historical_pose = historical_pose[0:1, :, :]  # [1, 4, 4]
+            historical_pose = historical_pose.repeat(batch_size, 1, 1)  # [B, 4, 4]
+
+        # 计算相对位姿: T_rel = T_cur @ T_hist^{-1}
+        historical_pose_inv = torch.inverse(historical_pose)  # [B, 4, 4]
+        relative_pose = current_pose @ historical_pose_inv  # [B, 4, 4]
+
+        print(f"[_historical_state_project] 相对位姿计算完成")
+
+        # 步骤2: 将历史稀疏特征转换为dense volume
+        D_hist, H_hist, W_hist = historical_spatial_shape
+        C_hist = historical_features.shape[1]
+
+        # 创建dense volume用于历史特征和logits
+        # 使用scatter将稀疏特征填入dense volume
+        hist_features_dense = torch.zeros(D_hist, H_hist, W_hist, C_hist, device=device)
+        hist_logits_dense = torch.zeros(D_hist, H_hist, W_hist, 1, device=device)
+
+        # 提取索引（注意：historical_indices是[b, x, y, z]格式）
+        # 但spconv使用的是[b, x, y, z]（实际坐标顺序可能是[b, z, y, x]）
+        # 需要根据实际的spatial_shape来理解索引格式
+        b_indices = historical_indices[:, 0].long()  # [N_hist]
+        x_indices = historical_indices[:, 1].long()  # [N_hist]
+        y_indices = historical_indices[:, 2].long()  # [N_hist]
+        z_indices = historical_indices[:, 3].long()  # [N_hist]
+
+        # 确保索引在有效范围内
+        valid_idx_mask = (x_indices < W_hist) & (y_indices < H_hist) & (z_indices < D_hist)
+        x_indices = x_indices[valid_idx_mask]
+        y_indices = y_indices[valid_idx_mask]
+        z_indices = z_indices[valid_idx_mask]
+        valid_features = historical_features[valid_idx_mask]
+        valid_logits = historical_logits[valid_idx_mask]
+
+        # Scatter到dense volume
+        hist_features_dense[z_indices, y_indices, x_indices] = valid_features
+        hist_logits_dense[z_indices, y_indices, x_indices] = valid_logits
+
+        print(f"[_historical_state_project] 历史dense volume创建完成: {hist_features_dense.shape}")
+
+        # 步骤3: 创建历史dense grid和当前dense grid
+        # 历史grid（归一化到[-1, 1]）
+        z_hist = torch.linspace(-1, 1, D_hist, device=device)
+        y_hist = torch.linspace(-1, 1, H_hist, device=device)
+        x_hist = torch.linspace(-1, 1, W_hist, device=device)
+        Z_hist, Y_hist, X_hist = torch.meshgrid(z_hist, y_hist, x_hist, indexing='ij')
+        hist_grid = torch.stack([X_hist, Y_hist, Z_hist], dim=-1)  # [D, H, W, 3]
+        hist_grid = hist_grid.unsqueeze(0).unsqueeze(0)  # [1, 1, D, H, W, 3]
+
+        # 当前grid（归一化到[-1, 1]）
+        D_cur, H_cur, W_cur = current_spatial_shape
+        z_cur = torch.linspace(-1, 1, D_cur, device=device)
+        y_cur = torch.linspace(-1, 1, H_cur, device=device)
+        x_cur = torch.linspace(-1, 1, W_cur, device=device)
+        Z_cur, Y_cur, X_cur = torch.meshgrid(z_cur, y_cur, x_cur, indexing='ij')
+        cur_grid = torch.stack([X_cur, Y_cur, Z_cur], dim=-1)  # [D, H, W, 3]
+        cur_grid = cur_grid.unsqueeze(0).unsqueeze(0)  # [1, 1, D, H, W, 3]
+
+        # 扩展到batch维度
+        hist_grid = hist_grid.repeat(batch_size, 1, 1, 1, 1, 1)  # [B, 1, D, H, W, 3]
+        cur_grid = cur_grid.repeat(batch_size, 1, 1, 1, 1, 1)  # [B, 1, D, H, W, 3]
+
+        # 步骤4: 使用相对位姿变换历史grid到当前帧
+        # 提取相对位姿的旋转和平移
+        rot = relative_pose[:, :3, :3]  # [B, 3, 3]
+        trans = relative_pose[:, :3, 3]  # [B, 3]
+
+        # 重构grid为[B, 1, D*H*W, 3]用于变换
+        hist_grid_flat = hist_grid.view(batch_size, 1, -1, 3)  # [B, 1, D*H*W, 3]
+
+        # 应用旋转
+        # hist_grid_flat: [B, 1, N, 3], rot: [B, 3, 3]
+        # 对每个batch应用旋转
+        transformed_grid_list = []
+        for b in range(batch_size):
+            rot_b = rot[b:b+1]  # [1, 3, 3]
+            grid_b = hist_grid_flat[b:b+1]  # [1, 1, N, 3]
+            # 应用旋转: R @ p
+            transformed = torch.matmul(rot_b.unsqueeze(1), grid_b.permute(0, 1, 3, 2))  # [1, 1, 3, N]
+            transformed = transformed.permute(0, 1, 3, 2)  # [1, 1, N, 3]
+            transformed_grid_list.append(transformed)
+
+        transformed_grid = torch.cat(transformed_grid_list, dim=0)  # [B, 1, D*H*W, 3]
+        transformed_grid = transformed_grid.view(batch_size, 1, D_hist, H_hist, W_hist, 3)  # [B, 1, D, H, W, 3]
+
+        print(f"[_historical_state_project] 历史grid变换完成")
+
+        # 步骤5: 使用grid_sample从历史dense volume采样到当前grid
+        # 准备输入：历史dense volume [B, C, D, H, W]格式
+        hist_features_dense_bhwd = hist_features_dense.permute(3, 0, 1, 2).unsqueeze(0)  # [1, C, D, H, W]
+        hist_logits_dense_bhwd = hist_logits_dense.permute(3, 0, 1, 2).unsqueeze(0)  # [1, 1, D, H, W]
+        hist_features_dense_bhwd = hist_features_dense_bhwd.repeat(batch_size, 1, 1, 1, 1)  # [B, C, D, H, W]
+        hist_logits_dense_bhwd = hist_logits_dense_bhwd.repeat(batch_size, 1, 1, 1, 1)  # [B, 1, D, H, W]
+
+        # 当前grid作为采样grid [B, 1, D, H, W, 3]
+        # 注意：grid_sample期望的grid格式是[x, y, z]，范围[-1, 1]
+        # 我们的cur_grid已经是正确的格式
+
+        # 使用grid_sample采样历史特征和logits
+        projected_features_bhwd = F.grid_sample(
+            hist_features_dense_bhwd,  # [B, C, D, H, W]
+            cur_grid.squeeze(1),  # [B, D, H, W, 3]
+            mode='bilinear',
+            align_corners=True,
+            padding_mode='zeros'
+        )  # [B, C, D, H, W]
+
+        projected_sdfs_bhwd = F.grid_sample(
+            hist_logits_dense_bhwd,  # [B, 1, D, H, W]
+            cur_grid.squeeze(1),  # [B, D, H, W, 3]
+            mode='bilinear',
+            align_corners=True,
+            padding_mode='zeros'
+        )  # [B, 1, D, H, W]
+
+        # 转换为[D, H, W, C]和[D, H, W, 1]格式
+        projected_features = projected_features_bhwd[0].permute(1, 2, 3, 0)  # [D, H, W, C]
+        projected_sdfs = projected_sdfs_bhwd[0].permute(1, 2, 3, 0)  # [D, H, W, 1]
+
+        print(f"[_historical_state_project] 投影特征: {projected_features.shape}")
+        print(f"[_historical_state_project] 投影SDF: {projected_sdfs.shape}")
+        print(f"[_historical_state_project] 投影特征范围: [{projected_features.min():.3f}, {projected_features.max():.3f}]")
+        print(f"[_historical_state_project] 投影SDF范围: [{projected_sdfs.min():.3f}, {projected_sdfs.max():.3f}]")
+
+        return projected_features, projected_sdfs
+
     def _historical_state_project_sparse(self,
                                          current_pose: torch.Tensor,
                                          current_sparse_features: torch.Tensor,
@@ -474,16 +656,32 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             current_fine_sparse = voxel_outputs['fine']  # SparseConvTensor
             current_features = current_fine_sparse.features  # [N, 1]
             current_indices = current_fine_sparse.indices  # [N, 4] (b, x, y, z)
+            current_spatial_shape = current_fine_sparse.spatial_shape  # (D, H, W)
 
-            # 3) 投影历史信息（稀疏）
-            projected_features, projected_sdfs = self._historical_state_project_sparse(
+            # 3) 投影历史信息（Dense版本，严格按照任务二要求）
+            # 调用_historical_state_project获取dense volume的投影特征和SDF
+            projected_features_dense, projected_sdfs_dense = self._historical_state_project(
                 poses,
-                current_features,
-                current_indices,
-                multiscale_features  # 传递当前帧的多尺度特征
-            )  # [N, 128], [N, 1]
+                current_spatial_shape  # (D, H, W)
+            )  # [D, H, W, C], [D, H, W, 1]
 
-            # 4) 稀疏融合：concat + MLP
+            # 4) 从dense volume采样到当前稀疏点
+            # current_indices: [N, 4] (b, x, y, z)
+            # 需要提取z, y, x索引用于采样
+            z_indices = current_indices[:, 3].long()  # [N]
+            y_indices = current_indices[:, 2].long()  # [N]
+            x_indices = current_indices[:, 1].long()  # [N]
+
+            # 从dense volume中采样特征
+            # projected_features_dense: [D, H, W, C]
+            # projected_sdfs_dense: [D, H, W, 1]
+            projected_features = projected_features_dense[z_indices, y_indices, x_indices]  # [N, C]
+            projected_sdfs = projected_sdfs_dense[z_indices, y_indices, x_indices]  # [N, 1]
+
+            print(f"[forward_single_frame] 从dense volume采样稀疏特征: {projected_features.shape}")
+            print(f"[forward_single_frame] 从dense volume采样稀疏SDF: {projected_sdfs.shape}")
+
+            # 5) 稀疏融合：concat + MLP
             # 动态创建或更新融合网络（适应不同特征维度）
             hist_feat_dim = projected_features.shape[1]  # 历史特征维度
             current_feat_dim = current_features.shape[1]  # 当前特征维度（通常是1）
@@ -510,7 +708,7 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             # 通过MLP融合
             fused_features = self.sparse_fusion(concat_features)  # [N, fusion_output_dim]
 
-            # 5) 更新voxel_outputs（直接修改SparseConvTensor的特征）
+            # 6) 更新voxel_outputs（直接修改SparseConvTensor的特征）
             from spconv.pytorch import SparseConvTensor
             voxel_outputs['fine'] = SparseConvTensor(
                 features=fused_features,
@@ -519,7 +717,7 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
                 batch_size=batch_size
             )
 
-            # 6) 构建输出
+            # 7) 构建输出
             output = self._build_output_dict(voxel_outputs, proj_occ_logits, bp_data)
 
         # 4. 记录当前帧状态
