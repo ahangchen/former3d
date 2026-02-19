@@ -705,48 +705,29 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             projected_sdfs_bhwd = projected_sdfs_dense.permute(3, 0, 1, 2).unsqueeze(0)  # [1, 1, D, H, W]
 
             # 使用grid_sample采样（padding_mode='zeros'自动处理越界）
-            # 对于3D data，grid需要是[B, D, H, W, 3]或任意形状只要最后一维是3
-            # 我们创建一个full grid然后采样
-            # 方法：创建一个完整的grid，然后只取我们需要的点
-            # 更高效的方法：使用reshape技巧
+            # 对于5D input [B, C, D, H, W]，grid需要是[B, D, H, W, 3]或[B, N, 3]
+            # 我们将grid从[B, 1, N, 3]转换为[B, N, 3]格式
+            sparse_sample_grid = sample_grid.squeeze(1)  # [1, N, 3]
 
-            # 重建完整的采样grid [D, H, W, 3]
-            z_grid = torch.linspace(-1, 1, D_cur, device=device)
-            y_grid = torch.linspace(-1, 1, H_cur, device=device)
-            x_grid = torch.linspace(-1, 1, W_cur, device=device)
-            Z_grid, Y_grid, X_grid = torch.meshgrid(z_grid, y_grid, x_grid, indexing='ij')
-            full_grid = torch.stack([X_grid, Y_grid, Z_grid], dim=-1)  # [D, H, W, 3]
-
-            # 在full_grid中找到对应的采样点
-            # 由于sparse点可能不在grid上，我们需要创建一个专门的grid用于sparse点
-            # 使用[B, 1, N, 3]格式的grid
-            sparse_sample_grid = sample_grid  # [1, 1, N, 3]
-
-            # grid_sample对5D input [B, C, D, H, W]期望grid是[B, D, H, W, 3]或[B, N, 3]
-            # 我们使用permute将[B, 1, N, 3]转为[B, N, 1, 1, 3]以匹配input的spatial维度
-            # 但这样会创建很多无效点
-
-            # 正确的方法：将sparse点当作独立的采样请求
-            # 使用grid_sample的任意grid采样功能
             sampled_features = F.grid_sample(
                 projected_features_bhwd,  # [1, C, D, H, W]
-                sparse_sample_grid,  # [1, 1, N, 3]
+                sparse_sample_grid,  # [1, N, 3]
                 mode='bilinear',
                 align_corners=True,
                 padding_mode='zeros'  # 越界返回0
-            )  # [1, C, 1, N]
+            )  # [1, C, 1, 1, N]
 
             sampled_sdfs = F.grid_sample(
                 projected_sdfs_bhwd,  # [1, 1, D, H, W]
-                sparse_sample_grid,  # [1, 1, N, 3]
+                sparse_sample_grid,  # [1, N, 3]
                 mode='bilinear',
                 align_corners=True,
                 padding_mode='zeros'  # 越界返回0
-            )  # [1, 1, 1, N]
+            )  # [1, 1, 1, 1, N]
 
             # 转换回[N, C]和[N, 1]格式
-            projected_features = sampled_features[0, :, 0, :].T  # [N, C]
-            projected_sdfs = sampled_sdfs[0, 0, 0, :].unsqueeze(1)  # [N, 1]
+            projected_features = sampled_features[0, :, 0, 0, :].T  # [N, C]
+            projected_sdfs = sampled_sdfs[0, 0, 0, 0, :].unsqueeze(1)  # [N, 1]
 
             print(f"[forward_single_frame] 从dense volume采样稀疏特征: {projected_features.shape}")
             print(f"[forward_single_frame] 从dense volume采样稀疏SDF: {projected_sdfs.shape}")
