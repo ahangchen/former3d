@@ -660,82 +660,17 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             else:
                 raise RuntimeError("multiscale_features中没有fine级别特征")
 
-            # 3) 投影历史信息（Dense版本，严格按照任务二要求）
-            # 调用_historical_state_project获取dense volume的投影特征和SDF
-            projected_features_dense, projected_sdfs_dense = self._historical_state_project(
-                poses,
-                current_spatial_shape  # (D, H, W)
-            )  # [D, H, W, C], [D, H, W, 1]
+            # 3) 投影历史信息（BEVFormer风格的稀疏融合）
+            # 调用_historical_state_project_sparse直接在稀疏空间进行投影
+            # 参考BEVFormer的Temporal Self-Attention机制，使用最近邻匹配
+            projected_features, projected_sdfs = self._historical_state_project_sparse(
+                poses,                              # [B, 4, 4] 当前帧Pose
+                current_features,                   # [N, C_cur] 当前帧稀疏特征
+                current_indices,                    # [N, 4] 当前帧稀疏体素索引
+                multiscale_features                 # 多尺度特征字典
+            )  # [N, C_hist], [N, 1]
 
-            # 4) 从dense volume采样到当前稀疏点（使用grid_sample处理索引越界）
-            # current_indices: [N, 4] (b, x, y, z)
-            # projected_features_dense: [D, H, W, C]
-            # projected_sdfs_dense: [D, H, W, 1]
-
-            # 提取索引
-            z_indices = current_indices[:, 3].long()  # [N]
-            y_indices = current_indices[:, 2].long()  # [N]
-            x_indices = current_indices[:, 1].long()  # [N]
-
-            # 获取当前spatial_shape
-            D_cur, H_cur, W_cur = current_spatial_shape
-
-            # 将稀疏索引转换为归一化坐标[-1, 1]（用于grid_sample）
-            # 处理边界情况：当维度为1时，归一化坐标为0
-            z_norm = torch.zeros_like(z_indices.float(), device=device)
-            y_norm = torch.zeros_like(y_indices.float(), device=device)
-            x_norm = torch.zeros_like(x_indices.float(), device=device)
-
-            if D_cur > 1:
-                z_norm = z_indices.float() / (D_cur - 1) * 2 - 1
-            if H_cur > 1:
-                y_norm = y_indices.float() / (H_cur - 1) * 2 - 1
-            if W_cur > 1:
-                x_norm = x_indices.float() / (W_cur - 1) * 2 - 1
-
-            # 堆叠成采样grid [N, 3] -> [1, 1, N, 3]
-            # grid_sample期望的格式是[x, y, z]
-            sample_grid = torch.stack([x_norm, y_norm, z_norm], dim=-1)  # [N, 3]
-            sample_grid = sample_grid.unsqueeze(0).unsqueeze(0)  # [1, 1, N, 3]
-
-            # 准备dense volume格式：[B, C, D, H, W]
-            # grid_sample对3D输入要求grid的shape为[B, D, H, W, 3]或其变体
-            # 我们使用[B, N, 3]格式，grid_sample会自动处理
-            projected_features_bhwd = projected_features_dense.permute(3, 0, 1, 2).unsqueeze(0)  # [1, C, D, H, W]
-            projected_sdfs_bhwd = projected_sdfs_dense.permute(3, 0, 1, 2).unsqueeze(0)  # [1, 1, D, H, W]
-
-            # 使用grid_sample采样（padding_mode='zeros'自动处理越界）
-            # 对于5D input [B, C, D, H, W]，grid需要是[B, D, H, W, 3]或[B, N, 3]
-            # 我们将grid从[B, 1, N, 3]转换为[B, N, 3]格式
-            sparse_sample_grid = sample_grid.squeeze(1)  # [1, N, 3]
-
-            # 调试：确认grid形状
-            print(f"[DEBUG] sample_grid.shape: {sample_grid.shape}")
-            print(f"[DEBUG] sparse_sample_grid.shape: {sparse_sample_grid.shape}")
-            print(f"[DEBUG] projected_features_bhwd.shape: {projected_features_bhwd.shape}")
-
-            sampled_features = F.grid_sample(
-                projected_features_bhwd,  # [1, C, D, H, W]
-                sparse_sample_grid,  # [1, N, 3]
-                mode='bilinear',
-                align_corners=True,
-                padding_mode='zeros'  # 越界返回0
-            )  # [1, C, 1, 1, N]
-
-            sampled_sdfs = F.grid_sample(
-                projected_sdfs_bhwd,  # [1, 1, D, H, W]
-                sparse_sample_grid,  # [1, N, 3]
-                mode='bilinear',
-                align_corners=True,
-                padding_mode='zeros'  # 越界返回0
-            )  # [1, 1, 1, 1, N]
-
-            # 转换回[N, C]和[N, 1]格式
-            projected_features = sampled_features[0, :, 0, 0, :].T  # [N, C]
-            projected_sdfs = sampled_sdfs[0, 0, 0, 0, :].unsqueeze(1)  # [N, 1]
-
-            print(f"[forward_single_frame] 从dense volume采样稀疏特征: {projected_features.shape}")
-            print(f"[forward_single_frame] 从dense volume采样稀疏SDF: {projected_sdfs.shape}")
+            print(f"[forward_single_frame] 稀疏空间投影完成: 特征{projected_features.shape}, SDF{projected_sdfs.shape}")
             print(f"[forward_single_frame] 投影特征范围: [{projected_features.min():.3f}, {projected_features.max():.3f}]")
             print(f"[forward_single_frame] 投影SDF范围: [{projected_sdfs.min():.3f}, {projected_sdfs.max():.3f}]")
 
