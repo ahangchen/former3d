@@ -709,6 +709,11 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
             # 我们将grid从[B, 1, N, 3]转换为[B, N, 3]格式
             sparse_sample_grid = sample_grid.squeeze(1)  # [1, N, 3]
 
+            # 调试：确认grid形状
+            print(f"[DEBUG] sample_grid.shape: {sample_grid.shape}")
+            print(f"[DEBUG] sparse_sample_grid.shape: {sparse_sample_grid.shape}")
+            print(f"[DEBUG] projected_features_bhwd.shape: {projected_features_bhwd.shape}")
+
             sampled_features = F.grid_sample(
                 projected_features_bhwd,  # [1, C, D, H, W]
                 sparse_sample_grid,  # [1, N, 3]
