@@ -430,7 +430,8 @@ def validate(model, dataloader, args):
             intrinsics = batch['intrinsics']
 
             try:
-                outputs, states = model.forward_sequence(images, poses, intrinsics, reset_state=True)
+                # DDP包装的模型需要通过module访问原始模型的方法
+                outputs, states = model.module.forward_sequence(images, poses, intrinsics, reset_state=True)
 
                 # 计算损失
                 targets = batch.get('tsdf', None)
