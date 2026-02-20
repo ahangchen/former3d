@@ -451,18 +451,40 @@ class PoseAwareStreamSdfFormerSparse(SDFFormer):
 
         # 步骤4: 使用最近邻查找，为每个当前稀疏点找到最近的历史投影点
         # cur_points_norm: [N_cur, 3], transformed_points: [N_hist, 3]
-        # 计算距离矩阵 [N_cur, N_hist]
-        dists = torch.cdist(cur_points_norm, transformed_points, p=2)  # [N_cur, N_hist]
 
-        # 找到最近邻的索引
-        nearest_indices = torch.argmin(dists, dim=1)  # [N_cur]
+        # 为避免CUDA OOM，分批计算距离矩阵
+        # 当 N_cur 和 N_hist 很大时，完整的 [N_cur, N_hist] 距离矩阵会占用大量显存
+        # 例如：N_cur=30000, N_hist=60000 时，距离矩阵需要 ~7GB
+        N_cur = cur_points_norm.shape[0]
+        N_hist = transformed_points.shape[0]
 
-        # 获取最近邻点的距离
-        nearest_dists = torch.gather(dists, 1, nearest_indices.unsqueeze(1))  # [N_cur, 1]
+        # 根据点数动态调整batch_size，确保单批次距离矩阵不超过100MB
+        max_memory_mb = 100
+        batch_size = min(5000, max(1, int(max_memory_mb * 1024 * 1024 / (4 * N_hist))))
+
+        nearest_indices = torch.zeros(N_cur, dtype=torch.long, device=device)
+        nearest_dists = torch.zeros(N_cur, device=device)
+
+        # 分批处理当前点
+        for i in range(0, N_cur, batch_size):
+            end_i = min(i + batch_size, N_cur)
+            cur_batch = cur_points_norm[i:end_i]  # [batch_size, 3]
+
+            # 计算当前batch与所有历史点的距离
+            dists_batch = torch.cdist(cur_batch, transformed_points, p=2)  # [batch_size, N_hist]
+
+            # 找到最近邻
+            nearest_dists_batch, nearest_indices_batch = torch.min(dists_batch, dim=1)
+
+            nearest_indices[i:end_i] = nearest_indices_batch
+            nearest_dists[i:end_i] = nearest_dists_batch
+
+            # 释放中间变量
+            del dists_batch
 
         # 设置距离阈值，超出阈值的点使用零特征
         dist_threshold = 0.5  # 在归一化空间[-1, 1]^3中的距离阈值
-        valid_mask = nearest_dists.squeeze(1) < dist_threshold  # [N_cur]
+        valid_mask = nearest_dists < dist_threshold  # [N_cur]
 
         # 获取历史特征维度
         hist_feat_dim = historical_features.shape[1]  # 历史特征维度（不一定是128）
